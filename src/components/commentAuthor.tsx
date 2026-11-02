@@ -1,4 +1,4 @@
-import { codeCommentDestination, type PullTab } from '../api/workspace.js';
+import { codeCommentDestination, commentDestination, type PullTab, type ThreadMessage } from '../api/workspace.js';
 import { IconUser } from '../icons.js';
 
 export function CommentAuthor({ author, agent = false }: { author: string; agent?: boolean }) {
@@ -11,8 +11,9 @@ export function CommentAuthor({ author, agent = false }: { author: string; agent
   </span>;
 }
 
-export function codeCommentPlaceholder(tab?: Pick<PullTab, 'info' | 'viewer'>): string {
-  const destination = tab ? codeCommentDestination(tab) : null;
+export function codeCommentPlaceholder(tab?: Pick<PullTab, 'info' | 'viewer'> & Partial<Pick<PullTab, 'comments'>>, message?: ThreadMessage): string {
+  const destination = tab ? message ? commentDestination(tab, message) : codeCommentDestination(tab) : null;
+  if (message?.destination === 'local' && destination !== 'local') return 'Leave a reply...';
   return destination === 'local' ? 'Leave a comment, agent will respond...'
     : destination === 'github' ? 'Post a comment on GitHub...' : 'Leave a comment...';
 }

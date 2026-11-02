@@ -153,3 +153,25 @@ it('keeps feedback queued when disabled, including during an in-flight connectio
   mocks.connect.mockImplementationOnce(async () => { mocks.enabled = false; return { client: { close: mocks.close } }; });
   await flushCodexComments(); expect(mocks.send).not.toHaveBeenCalled(); expect(m.codex?.status).toBe('queued');
 });
+
+it('never queues, sends or retries replies in another author’s thread, including nested replies to yourself', async () => {
+  const t = mocks.data.tabs[0], root = { ...message(), author: 'bob', remoteId: 10 };
+  const parent = { ...message(), parentId: 10, remoteId: 11 };
+  const reply = { ...message(), parentId: 11 };
+  t.comments.push(reply, parent, root); queueCodexComment(t, reply);
+  expect(reply.codex).toBeUndefined();
+  reply.codex = { threadId: chat, status: 'queued', mode: 'steer' };
+  await flushCodexComments(); expect(mocks.connect).not.toHaveBeenCalled(); expect(mocks.send).not.toHaveBeenCalled();
+  reply.codex.status = 'uncertain'; expect(() => retryCodexComment(t, reply)).toThrow('threads you started');
+  recoverCodexComments(); expect(reply.codex).toBeUndefined(); expect(reply.codexRequested).toBe(false); expect(reply.destination).toBe('local');
+});
+it('rechecks thread ownership after connecting and rejects a legacy private request without publishing it', async () => {
+  const t = mocks.data.tabs[0], root = message(), reply = { ...message(), parentKey: root.id };
+  t.comments.push(root, reply);
+  mocks.connect.mockImplementationOnce(async () => { root.author = 'bob'; return { client: { close: mocks.close } }; });
+  queueCodexComment(t, reply);
+  await vi.waitFor(() => expect(mocks.close).toHaveBeenCalled());
+  expect(mocks.send).not.toHaveBeenCalled();
+  delete reply.destination;
+  recoverCodexComments(); expect(reply.destination).toBe('local'); expect(reply.codex).toBeUndefined();
+});

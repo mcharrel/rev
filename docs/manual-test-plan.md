@@ -366,3 +366,8 @@ Automated coverage: header order, per-PR request lifecycle, polling, duplicate s
 - Unit and HTTP integration tests cover delayed cleanup, simultaneous closes, older polls/responses, new opens, failures, cache release and tab reordering. Browser automation remains disabled by user preference.
 
 - Real-Git tests now verify independent snapshot imports, legacy dependency migration and HTTP closure with broken borrower refs. They also verify object access after provider removal and final cache collection. The visual immediate-close behavior remains covered by the manual checks above.
+
+## Code-thread ownership
+
+- On your own PR, post a new code thread and follow up after a Codex reply: both requests reach the originating chat. Reply in a thread started by another reviewer: the composer says GitHub, the reply appears on GitHub and no Codex pickup/status appears. Replying to your own previous reply in that reviewer’s thread has the same GitHub behavior.
+- Previously private replies misrouted to Codex stay local after upgrading; stale pickup indicators disappear and they are never published retroactively. Unit and HTTP integration tests cover routing, queue/recovery and pickup gates without posting real test comments.

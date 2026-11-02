@@ -271,6 +271,25 @@
         "stale-prompt UI (e2e): cancel keeps the review open; discard-all fires delete-all then completes; keep-all fires keep-all, completes, and preserves annotations"
       ]
     },
+    "5.8": {
+      "stateful": true,
+      "tests": [
+        "tests/unit/workspace/comment-routing.test.ts",
+        "tests/unit/workspace/codex.test.ts",
+        "tests/unit/workspace/codex-reply.test.ts",
+        "tests/unit/workspace/service.test.ts",
+        "tests/unit/client/workspaceThreads.test.ts",
+        "tests/integration/workspace/commentRouting.test.ts"
+      ],
+      "transitions": [
+        "own root -> nested agent reply -> own follow-up delivered",
+        "other root -> own intermediate reply -> new reply publishes on GitHub without Codex",
+        "missing/cyclic ancestors or unknown identity -> no delivery/pickup",
+        "connection pending -> thread ownership changes -> no send",
+        "historical private misroute -> recovery cancels delivery -> no retroactive publication",
+        "mixed/reordered roots and replies -> same eligibility; empty list remains empty"
+      ]
+    },
     "5.7": {
       "tests": [
         "tests/unit/db/queries.test.ts"

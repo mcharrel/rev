@@ -102,7 +102,7 @@ export type ThreadMessage = z.infer<typeof ThreadMessageSchema>;
 
 /** Delivery to a chat is not an acknowledgement that an agent has begun work. */
 export function commentAgentStatus(message: ThreadMessage): 'pending' | 'processing' | 'answered' | undefined {
-  return message.kind === 'review' && message.destination === 'local'
+  return message.kind === 'review' && message.destination === 'local' && message.codexRequested !== false
     ? message.agentStatus ?? 'pending' : undefined;
 }
 export const DeploymentTargetSchema = z.object({
@@ -169,10 +169,40 @@ export function codeCommentDestination(tab: Pick<PullTab, 'info' | 'viewer'>): '
   if (!tab.viewer || author === undefined || author === '') return null;
   return isPullAuthor(tab) ? 'local' : 'github';
 }
-export function commentDestination(tab: Pick<PullTab, 'info' | 'viewer'>, message: Pick<ThreadMessage, 'kind'>): 'local' | 'github' | null {
+type CommentRoutingTab = Pick<PullTab, 'info' | 'viewer'> & Partial<Pick<PullTab, 'comments'>>;
+/** Follow both local and GitHub replies; missing or cyclic ancestry cannot establish ownership. */
+export function codeThreadRoot(tab: Pick<CommentRoutingTab, 'comments'>, message: ThreadMessage): ThreadMessage | null {
+  const seen = new Set<string>();
+  let current: ThreadMessage | undefined = message;
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id);
+    if (current.kind === 'issue' || (current.parentKey !== undefined && current.parentId !== undefined)) return null;
+    if (current.parentKey === undefined && current.parentId === undefined) return current.kind === 'review' ? current : null;
+    const parentKey: string | undefined = current.parentKey;
+    const parentId: number | undefined = current.parentId;
+    current = tab.comments?.find(candidate => parentKey !== undefined ? candidate.id === parentKey : candidate.remoteId === parentId);
+  }
+  return null;
+}
+function commentAuthorLogin(message: ThreadMessage): string {
+  return message.author === 'You' && message.remoteId === undefined ? message.publishAs ?? '' : message.author;
+}
+export function commentDestination(tab: CommentRoutingTab, message: ThreadMessage | { kind: 'issue' }): 'local' | 'github' | null {
   if (message.kind === 'ai') return 'local';
   if (message.kind === 'issue') return tab.viewer ? 'github' : null;
-  return codeCommentDestination(tab);
+  const destination = codeCommentDestination(tab);
+  if (destination !== 'local') return destination;
+  const root = codeThreadRoot(tab, message);
+  if (root === null) return null;
+  const author = commentAuthorLogin(root);
+  return author !== '' ? author.toLowerCase() === tab.viewer.toLowerCase() ? 'local' : 'github' : null;
+}
+/** A local destination alone does not grant Codex permission to handle someone else's thread. */
+export function canHandleCodexComment(tab: CommentRoutingTab, message: ThreadMessage): boolean {
+  if (!isPullAuthor(tab) || message.kind !== 'review' || message.destination !== 'local' || message.deleted || message.codexRequested === false
+    || commentAuthorLogin(message).toLowerCase() !== tab.viewer.toLowerCase()) return false;
+  const root = codeThreadRoot(tab, message);
+  return root !== null && !root.deleted && commentAuthorLogin(root).toLowerCase() === tab.viewer.toLowerCase();
 }
 export const WorkspaceSchema = z.object({
   tabs: z.array(PullTabSchema),

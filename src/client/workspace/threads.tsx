@@ -1,6 +1,6 @@
 import { delegate, delegateCapture, effect } from 'kerfjs';
 
-import { commentAgentStatus, commentDestination, type ThreadMessage } from '../../api/workspace.js';
+import { commentAgentStatus, commentDestination, isPullAuthor, type ThreadMessage } from '../../api/workspace.js';
 import { codeCommentPlaceholder,CommentAuthor } from '../../components/commentAuthor.js';
 import { IconCheck, IconCornerDownRight, IconTrash } from '../../icons.js';
 import { renderGitHubMarkdown } from '../../utils/githubMarkdown.js';
@@ -118,7 +118,7 @@ export function threadHtml(root: ThreadMessage, comments: ThreadMessage[], expan
 }
 function replyInput(root: ThreadMessage) {
   const tab = activeTab();
-  const local = tab !== undefined && commentDestination(tab, root) === 'local';
+  const local = root.kind === 'review' && tab !== undefined && isPullAuthor(tab) && (root.destination === 'local' || commentDestination(tab, root) === 'local');
   if (!local && !(root.destination !== 'local' && root.kind === 'review' && root.remoteId !== undefined)) return null;
   return <details className="code-reply-disclosure" data-reply-composer={root.id}>
     <summary><IconCornerDownRight />Add reply…</summary>
@@ -126,7 +126,7 @@ function replyInput(root: ThreadMessage) {
       <CommentAuthor author={(tab?.viewer ?? '') || 'You'} />
       <textarea className="pr-reply-input" aria-label="Reply"
         data-parent-key={local ? root.id : undefined} data-reply-to={local ? undefined : root.remoteId}
-        placeholder={codeCommentPlaceholder(tab)} />
+        placeholder={codeCommentPlaceholder(tab, root)} />
       <span className="annotation-form-hint">Enter to reply · Shift+Enter for a new line</span>
     </div>
   </details>;

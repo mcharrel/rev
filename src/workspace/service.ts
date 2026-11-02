@@ -3,7 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 
 import {
+  canHandleCodexComment,
   codeCommentDestination,
+  codeThreadRoot,
   commentDestination,
   isPullAuthor,
   type PullTab,
@@ -24,7 +26,7 @@ import {
 import { parseDiffData } from '../git/parseDiffData.js';
 import { githubAccount } from './accounts.js';
 import { ensureCheckout, importPull } from './checkout.js';
-import { flushCodexComments, queueCodexComment, recoverCodexComments, retryCodexComment, reviseComment } from './codex.js';
+import { flushCodexComments, queueCodexComment, reconcileCodexComment, recoverCodexComments, retryCodexComment, reviseComment } from './codex.js';
 import { cancelDeployment, refreshDeployment, stopDeployments } from './deployments.js';
 import { discardTabData } from './discard.js';
 import {
@@ -271,6 +273,7 @@ async function syncComments(tab: PullTab): Promise<void> {
     }
   }
   tab.commentsLoaded = true;
+  reconcileCommentRouting(tab);
   saveWorkspace();
 }
 function needsInitialSync(tab: PullTab): boolean {
@@ -357,11 +360,16 @@ export function reconcileCommentRouting(tab: PullTab): void {
   const codeDestination = codeCommentDestination(tab);
   const data = workspaceData();
   if (codeDestination === 'github') delete tab.codexThreadId;
+  // Establish queued authors before walking threads, regardless of stored comment order.
+  for (const item of data.outbox) if (item.tab === tab.key && tab.viewer) {
+    const message = tab.comments.find(candidate => candidate.id === item.message);
+    if (message) message.publishAs ??= tab.viewer;
+  }
   for (const message of tab.comments) {
-    const destination = commentDestination(tab, message);
     const queued = data.outbox.some(item => item.tab === tab.key && item.message === message.id);
-    // Keep previously private Main conversations private when correcting their routing.
-    const privateHistory = message.destination === 'local' || (message.kind === 'issue' && message.codex !== undefined);
+    const destination = commentDestination(tab, message);
+    // Routing corrections must never publish a conversation previously sent only to Codex.
+    const privateHistory = message.destination === 'local' || message.codex !== undefined;
     if (privateHistory || (destination === 'local' &&
       (queued || message.kind === 'ai' || message.codex))) {
       message.destination = 'local';
@@ -371,8 +379,8 @@ export function reconcileCommentRouting(tab: PullTab): void {
         delete message.error;
       }
     } else if (destination === 'github' && queued) message.destination = 'github';
-    if (codeDestination === 'github' || message.kind === 'issue') delete message.codex;
-    if (destination === 'local' && message.destination === 'local' && message.codexRequested === true && !message.codex)
+    reconcileCodexComment(tab, message);
+    if (canHandleCodexComment(tab, message) && message.codexRequested === true && !message.codex)
       queueCodexComment(tab, message);
   }
 }
@@ -701,6 +709,10 @@ export async function mutateWorkspace(input: WorkspaceMutation, currentReviewId:
     if (parent?.kind === 'issue' || (parent?.kind === 'ai' && parent.path === undefined))
       throw new Error('Use the Main view composer to post a PR comment on GitHub');
     if (input.parentKey !== undefined && codeCommentDestination(tab) !== 'local') throw new Error('Local replies are only available on your own PRs');
+    const root = parent && codeThreadRoot(tab, parent);
+    if (parent && !root) throw new Error('Comment thread not found');
+    const local = parent !== undefined && (parent.destination === 'local' || commentDestination(tab, parent) === 'local');
+    if (parent && !local && root?.remoteId === undefined) throw new Error('This thread is not available on GitHub');
     const message: ThreadMessage = {
       id: randomUUID(),
       body: input.body,
@@ -708,9 +720,9 @@ export async function mutateWorkspace(input: WorkspaceMutation, currentReviewId:
       date: new Date().toISOString(),
       url: '',
       kind: parent !== undefined ? 'review' : 'issue',
-      destination: input.parentKey !== undefined || parent?.destination === 'local' ? 'local' : undefined,
-      parentId: input.parentKey === undefined ? parent?.parentId ?? parent?.remoteId : undefined,
-      parentKey: input.parentKey,
+      destination: local ? 'local' : undefined,
+      parentId: local ? undefined : root?.remoteId,
+      parentKey: local ? parent.id : undefined,
       path: parent?.path,
       line: parent?.line,
       side: parent?.side,

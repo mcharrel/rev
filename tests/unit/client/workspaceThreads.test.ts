@@ -128,3 +128,16 @@ it('preserves reply drafts and disclosure state through refreshes without revivi
   elements = [];
   expect(preserveReplyComposers(view)).not.toThrow();
 });
+
+it('uses GitHub reply controls for somebody else’s code thread on my own PR', () => {
+  const r = { ...root(), author: 'bob', destination: undefined, remoteId: 456 };
+  const html = String(threadHtml(r, [r]));
+  expect(html).toContain('data-reply-to="456"'); expect(html).not.toContain('data-parent-key');
+  expect(html).toContain('Post a comment on GitHub...'); expect(html).not.toContain('agent will respond');
+});
+it('keeps historical private replies local without promising agent pickup', () => {
+  const r = { ...root(), author: 'bob', codexRequested: false };
+  const html = String(threadHtml(r, [r]));
+  expect(html).toContain('data-parent-key="root"'); expect(html).toContain('Leave a reply...');
+  expect(html).not.toContain('Pending pickup'); expect(html).not.toContain('data-agent-status');
+});

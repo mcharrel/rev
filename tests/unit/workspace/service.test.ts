@@ -577,7 +577,7 @@ describe('comment scope and ownership routing', () => {
   it('cancels delayed and ambiguous own-PR writes, including archived edits/deletes, while publishing other PR comments', async () => {
     const mine = own(); const other = tab(2); other.codexThreadId = chat;
     for (const t of [mine, other]) {
-      t.comments.push({ id: `message-${t.key}`, body: 'Saved', author: 'alice', date: '', url: '', kind: 'review', path: 'file.ts', status: 'pending', codex: { threadId: chat, mode: 'queue', status: 'queued' } });
+      t.comments.push({ id: `message-${t.key}`, body: 'Saved', author: 'alice', date: '', url: '', kind: 'review', path: 'file.ts', status: 'pending', codex: t === mine ? { threadId: chat, mode: 'queue', status: 'queued' } : undefined });
       for (const operation of t === mine ? ['create', 'edit', 'delete'] : ['create'])
         mocks.data.outbox.push({ id: `${t.key}-${operation}`, tab: t.key, message: t.comments[0].id, operation, nextAttempt: t === mine ? Date.now() + 300000 : 0, attempted: t === mine });
     }
@@ -609,7 +609,7 @@ describe('comment scope and ownership routing', () => {
   it('retains unlinked private comments and only queues fresh requests when their chat is linked later', async () => {
     const t = own(); delete t.codexThreadId;
     await codeComment(t, 'New request');
-    t.comments.push({ id: 'imported', kind: 'review', body: 'Historical annotation', destination: 'local', status: 'done' });
+    t.comments.push({ id: 'imported', kind: 'review', body: 'Historical annotation', author: 'alice', destination: 'local', status: 'done' });
     await syncTab(t);
     expect(t.comments).toHaveLength(2); expect(t.comments[0].codex).toBeUndefined();
     t.codexThreadId = chat; await flushOutbox(); await flushOutbox();

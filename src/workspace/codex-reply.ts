@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { commentAgentStatus, commentDestination, type ThreadMessage } from '../api/workspace.js';
+import { canHandleCodexComment, commentAgentStatus, type ThreadMessage } from '../api/workspace.js';
 import { commentPrompt } from './codex.js';
 import { parsePullUrl, pullKey } from './github.js';
 import { closingTabs } from './lifecycle.js';
@@ -14,8 +14,8 @@ function boundComment(input: CommentInput) {
   const tab = data.tabs.find(item => item.key === key && !closingTabs.has(item));
   const original = tab?.comments.find(item => item.id === input.commentId && !item.deleted && item.kind !== 'ai');
   if (!tab || !original) throw new Error('Comment not found in this PR');
-  if (commentDestination(tab, original) !== 'local' || original.destination !== 'local')
-    throw new Error('Codex only handles local comments on your own PRs');
+  if (!canHandleCodexComment(tab, original))
+    throw new Error('Codex only handles your local comments in threads you started on your own PRs');
   if (tab.codexThreadId !== input.threadId || original.codex?.threadId !== input.threadId)
     throw new Error('Only the originating Codex chat can answer this comment');
   if ((original.revision ?? 1) !== (input.revision ?? 1))
@@ -36,7 +36,7 @@ export function listCodexComments(input: { url: string; threadId: string }) {
   const tab = workspaceData().tabs.find(item => item.key === key && !closingTabs.has(item));
   if (!tab || tab.codexThreadId !== input.threadId) throw new Error('PR is not linked to this Codex chat');
   return tab.comments.filter(message => !message.deleted && message.codex?.threadId === input.threadId
-    && commentDestination(tab, message) === 'local' && commentAgentStatus(message) !== undefined
+    && canHandleCodexComment(tab, message) && commentAgentStatus(message) !== undefined
     && commentAgentStatus(message) !== 'answered').map(message => ({
       id: message.id, revision: message.revision ?? 1, status: commentAgentStatus(message),
       body: message.body, path: message.path, line: message.line, side: message.side,

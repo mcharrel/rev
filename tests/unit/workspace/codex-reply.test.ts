@@ -111,3 +111,13 @@ it('requests a source check for a new answer but not for a duplicate delivery', 
   expect(tab.sourceRefreshRequested).toEqual(expect.any(String));
   expect(tab.sourceRefreshRequested).not.toBe(request);
 });
+
+it('rejects polling, pickup and answers for a stale request in another author’s thread', () => {
+  const t = mocks.data.tabs[0], original = t.comments[0];
+  original.parentId = 10;
+  t.comments.push(ThreadMessageSchema.parse({ id: 'other', remoteId: 10, author: 'bob', kind: 'review', body: 'Review', date: '' }));
+  expect(listCodexComments(input)).toEqual([]);
+  expect(() => pickUpCodexComment(input)).toThrow('threads you started');
+  expect(() => postCodexReply(input)).toThrow('threads you started');
+  expect(original.agentStatus).toBeUndefined(); expect(t.comments).toHaveLength(2);
+});
