@@ -55,3 +55,11 @@ smoke_resolve_port() {
 
   SMOKE_PORT="$port"
 }
+
+# Keep test servers and their CLI clients away from live settings and agent controls.
+smoke_isolate_config() {
+  export GLASSBOX_CONFIG_DIR="$1/config"
+  export REV_CONFIG_DIR="$1/rev"
+  export REV_DATA_DIR="$1/workspace"
+  mkdir -p "$GLASSBOX_CONFIG_DIR" "$REV_CONFIG_DIR" "$REV_DATA_DIR"
+}

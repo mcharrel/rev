@@ -14,7 +14,11 @@ export const CodexCommentSchema = z.object({
 });
 export const CodexReplySchema = CodexCommentSchema.extend({ body: z.string().trim().min(1).max(50000) });
 export const CodexCommentsSchema = z.object({ url: z.string(), threadId: z.uuid() });
-export const controlPath = () => join(process.env.REV_CONFIG_DIR ?? join(homedir(), '.local', 'share', 'rev'), 'connection.json');
+export const controlPath = () => {
+  // Isolated app servers must not replace the desktop's agent-control registration.
+  const isolated = (process.env.GLASSBOX_CONFIG_DIR?.trim() ?? '') !== '' ? process.env.GLASSBOX_CONFIG_DIR : undefined;
+  return join(process.env.REV_CONFIG_DIR ?? isolated ?? join(homedir(), '.local', 'share', 'rev'), 'connection.json');
+};
 let token = '';
 export function authorizeControl(value: string | undefined): boolean {
   return Boolean(token) && typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)

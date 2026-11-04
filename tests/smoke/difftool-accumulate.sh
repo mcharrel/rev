@@ -50,6 +50,7 @@ cleanup() {
   rm -rf "$WORK"
 }
 trap cleanup EXIT
+smoke_isolate_config "$WORK"
 
 echo "Starting accumulating server (--difftool-serve, --no-open) on $PORT ..."
 node "$CLI" --difftool-serve --no-open --strict-port --port "$PORT" --data-dir "$WORK/data" >"$WORK/srv.log" 2>&1 &

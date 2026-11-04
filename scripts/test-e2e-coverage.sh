@@ -25,7 +25,7 @@ fi
 # Start server with V8 coverage. Mirrors the playwright.config main webServer
 # command exactly (--ai-service-test keeps the suite hermetic — no real AI
 # calls, no API-key dependence).
-NODE_V8_COVERAGE="$COVERAGE_DIR" GLASSBOX_CONFIG_DIR="$CONFIG_DIR" \
+NODE_V8_COVERAGE="$COVERAGE_DIR" GLASSBOX_CONFIG_DIR="$CONFIG_DIR" REV_CONFIG_DIR="$CONFIG_DIR" \
   npx tsx src/cli.ts --demo:4 --ai-service-test --no-open --strict-port --port 4183 &
 SERVER_PID=$!
 

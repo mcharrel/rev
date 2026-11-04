@@ -85,7 +85,7 @@ test.beforeAll(async () => {
   server = spawn(
     process.execPath,
     [tsxCli, 'src/cli.ts', '--difftool-serve', '--no-open', '--strict-port', '--port', String(PORT), '--data-dir', dataDir],
-    { stdio: 'ignore', env: { ...process.env } },
+    { stdio: 'ignore', env: { ...process.env, REV_CONFIG_DIR: join(dataDir, 'control') } },
   );
   // Generous ceiling: the `--difftool-serve` server (PGLite init + review
   // create) can take >30s to answer on a slow/constrained machine. This is just

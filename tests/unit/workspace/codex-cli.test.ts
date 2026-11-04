@@ -49,3 +49,10 @@ it('rejects missing chat identity, invalid revisions, missing reply text and ser
   fetchMock.mockResolvedValue(new Response('Comment was edited', { status: 400 }));
   await expect(main(['pickup', url, '--comment', 'note'])).rejects.toThrow('Comment was edited');
 });
+
+it('explains an unreachable connection without claiming pickup or retrying a reply', async () => {
+  fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+  await expect(main(['pickup', url, '--comment', 'note'])).rejects.toThrow('Cannot reach rev on port 4183. Open or restart rev');
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(console.log).not.toHaveBeenCalled();
+});

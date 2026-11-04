@@ -1,6 +1,6 @@
 import { pullInfo } from './fixtures.js';
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -78,4 +78,23 @@ it('authenticates agent controls and enforces chat binding and comment revisions
   expect(mocks.refresh).toHaveBeenCalledWith(tab);
   expect(await (await request('comments', {})).json()).toEqual({ comments: [] });
   stop();
+});
+
+it('uses isolated app settings for control discovery unless an explicit rev directory overrides them', () => {
+  const isolated = join(dir, 'isolated');
+  vi.stubEnv('GLASSBOX_CONFIG_DIR', isolated);
+  expect(controlPath()).toBe(join(dir, 'connection.json'));
+  vi.stubEnv('REV_CONFIG_DIR', undefined);
+  expect(controlPath()).toBe(join(isolated, 'connection.json'));
+  const stop = registerControl(4199);
+  expect(JSON.parse(readFileSync(controlPath(), 'utf8')).port).toBe(4199);
+  stop();
+});
+
+it('preserves normal discovery when an app-settings override is missing or blank', () => {
+  vi.stubEnv('REV_CONFIG_DIR', undefined);
+  for (const value of [undefined, '', '   ']) {
+    vi.stubEnv('GLASSBOX_CONFIG_DIR', value);
+    expect(controlPath()).toBe(join(homedir(), '.local/share/rev/connection.json'));
+  }
 });

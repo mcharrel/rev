@@ -218,3 +218,5 @@ Own PRs offer Merge in the status dropdown, disabled for drafts and closed PRs. 
 - Retry interrupted cleanup only after checking all remaining files against the saved PR snapshot. Actual unpublished files, branches and unsafe paths remain protected. Retry transient deletion failures automatically.
 
 - Closing a managed review also recognizes a complete imported index paired with an older HEAD. Verify the whole staged tree against the independent snapshot cache; keep actual unpublished edits and local branches protected.
+
+Local agent controls use `REV_CONFIG_DIR` when explicitly set, otherwise the isolated `GLASSBOX_CONFIG_DIR`, otherwise the normal per-user rev directory. Smoke servers and their clients isolate both configuration roots and workspace storage so they cannot overwrite the running desktop’s authenticated connection. Failed connection attempts explain how to restore rev without claiming pickup or completion. Authentication, originating-chat checks, revision checks and reply deduplication remain mandatory.

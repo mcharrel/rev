@@ -44,6 +44,7 @@ cleanup() {
   rm -rf "$WORK"
 }
 trap cleanup EXIT
+smoke_isolate_config "$WORK"
 
 echo "Launching --ground-truth (--no-open) on $PORT from the bundle ..."
 # An --on-complete hook (GB-974) that records the env it received; the assertions

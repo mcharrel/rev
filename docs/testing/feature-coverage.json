@@ -277,6 +277,21 @@
         "stale-prompt UI (e2e): cancel keeps the review open; discard-all fires delete-all then completes; keep-all fires keep-all, completes, and preserves annotations"
       ]
     },
+    "5.9": {
+      "stateful": true,
+      "tests": [
+        "tests/unit/workspace/control.test.ts",
+        "tests/unit/workspace/codex-cli.test.ts",
+        "tests/unit/smoke/smokeLib.test.ts",
+        "tests/integration/workspace/codex-control.test.ts"
+      ],
+      "transitions": [
+        "live control -> isolated test registration -> test process exits -> original CLI still authenticates",
+        "pending -> explicit pickup -> reply -> answered; duplicate reply does not duplicate message",
+        "stale revision or wrong chat -> rejected without changing status",
+        "unreachable endpoint -> actionable error without success output"
+      ]
+    },
     "5.8": {
       "stateful": true,
       "tests": [

@@ -212,7 +212,11 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 15000,
     },
-  ],
+  ].map(server => ({
+    ...server,
+    // Every test server gets its own control file, including auxiliary projects.
+    env: { ...server.env, REV_CONFIG_DIR: join(tmpdir(), `rev-e2e-control-${process.pid}-${server.port}`) },
+  })),
   projects: [
     {
       name: 'chromium',

@@ -59,10 +59,15 @@ async function commentCommand(args: string[]): Promise<void> {
     : command === 'pickup' ? CodexCommentSchema.parse(comment)
     : CodexReplySchema.parse({ ...comment, body: readFileSync(file === '-' ? 0 : file ?? '', 'utf8') });
   const connection = ConnectionSchema.parse(JSON.parse(readFileSync(controlPath(), 'utf8')));
-  const response = await fetch(`http://127.0.0.1:${connection.port}/api/workspace/codex-${command}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-rev-token': connection.token },
-    body: JSON.stringify(input), signal: AbortSignal.timeout(5000),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`http://127.0.0.1:${connection.port}/api/workspace/codex-${command}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-rev-token': connection.token },
+      body: JSON.stringify(input), signal: AbortSignal.timeout(5000),
+    });
+  } catch (cause) {
+    throw new Error(`Cannot reach rev on port ${connection.port}. Open or restart rev, then retry this command.`, { cause });
+  }
   if (!response.ok) throw new Error(`rev ${command} failed: ${await response.text()}`);
   if (command === 'comments') console.log(JSON.stringify(await response.json(), null, 2));
   else console.log(command === 'pickup' ? 'Comment picked up in rev.' : 'Reply posted in rev; comment marked answered.');

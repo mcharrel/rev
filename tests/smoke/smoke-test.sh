@@ -40,6 +40,7 @@ TEST_REPO_DIR=""
 PASSED=0
 FAILED=0
 SERVER_PID=""
+TEST_CONFIG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/rev-smoke-config.XXXXXX")"
 
 # --- Helpers ---
 
@@ -57,11 +58,13 @@ cleanup() {
     kill "$SERVER_PID" 2>/dev/null || true
     wait "$SERVER_PID" 2>/dev/null || true
   fi
+  rm -rf "$TEST_CONFIG_DIR"
   if [[ -n "$TEST_REPO_DIR" && -d "$TEST_REPO_DIR" ]]; then
     rm -rf "$TEST_REPO_DIR"
   fi
 }
 trap cleanup EXIT
+smoke_isolate_config "$TEST_CONFIG_DIR"
 
 # --- Check binary exists ---
 

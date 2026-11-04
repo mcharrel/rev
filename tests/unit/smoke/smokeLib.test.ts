@@ -7,6 +7,8 @@
  * the smoke scripts drive it — sourced into a real bash process.
  */
 import { spawn, spawnSync, type ChildProcess } from 'child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -109,4 +111,17 @@ describe('smoke_resolve_port', () => {
     expect(r.status).toBe(1);
     expect(r.stdout).not.toContain('REACHED_NEXT_LINE');
   });
+});
+
+it('isolates settings, control discovery and workspace storage even with inherited live overrides', () => {
+  const root = mkdtempSync(join(tmpdir(), 'rev-smoke-isolation-'));
+  try {
+    const result = runWithLib('smoke_isolate_config "$TEST_ROOT"\nprintf "%s\\n" "$GLASSBOX_CONFIG_DIR" "$REV_CONFIG_DIR" "$REV_DATA_DIR"', {
+      TEST_ROOT: root, GLASSBOX_CONFIG_DIR: '/live/config', REV_CONFIG_DIR: '/live/rev', REV_DATA_DIR: '/live/workspace',
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim().split('\n')).toEqual(['config', 'rev', 'workspace'].map(path => join(root, path)));
+    for (const script of ['smoke-test.sh', 'difftool-accumulate.sh', 'ground-truth.sh'])
+      expect(readFileSync(join(ROOT, 'tests/smoke', script), 'utf8')).toContain('smoke_isolate_config ');
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
