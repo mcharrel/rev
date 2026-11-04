@@ -137,6 +137,8 @@
         "hook-configured checkout -> snapshot import -> no hook-generated files",
         "marked partial deletion -> missing/reinitialized Git metadata -> exact snapshot remainder -> close succeeds",
         "marked partial deletion -> modified/extra files, staged work or local branches -> preserve workspace",
+        "older HEAD + complete imported index -> verify cached tree -> close succeeds",
+        "staged snapshot + unpublished edits/hidden index flags/branches -> close refused",
         "legacy chain -> either closure order -> broken unrelated ref ignored -> remaining source readable",
         "partial alternate rewrite failure -> original retained -> retry -> usable cache graph",
         "last dependency removed -> cache collected -> next import recreates cache",

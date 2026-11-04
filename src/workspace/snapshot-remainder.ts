@@ -5,6 +5,21 @@ import { join } from 'node:path';
 
 import { gitAsync } from './checkout.js';
 
+/** An interrupted refresh can leave a complete imported index paired with the previous HEAD. */
+export async function indexMatchesImportedSnapshot(root: string, cache: string): Promise<boolean> {
+  try {
+    // These index flags can hide local edits from git status; never use them as evidence of a clean snapshot.
+    const files = await gitAsync(['ls-files', '-v', '-z'], root);
+    if (files.split('\0').some(entry => /^[a-zS] /.test(entry))) return false;
+    const tree = (await gitAsync(['write-tree'], root)).trim();
+    const snapshots = await gitAsync(['for-each-ref', '--format=%(refname) %(objectname) %(tree)', 'refs/glassbox/cache/'], cache);
+    return snapshots.split('\n').some(line => {
+      const [ref, commit, snapshot] = line.split(' ');
+      return ref === `refs/glassbox/cache/${commit}` && snapshot === tree;
+    });
+  } catch { return false; }
+}
+
 /** Prove that an interrupted deletion left only unchanged files from the saved snapshot. */
 export async function isSnapshotRemainder(root: string, revision: string, repository: string): Promise<boolean> {
   if (!/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/.test(revision)) return false;

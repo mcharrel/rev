@@ -3,7 +3,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync }
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
-import { isSnapshotRemainder } from '../../../src/workspace/snapshot-remainder.js';
+import { indexMatchesImportedSnapshot, isSnapshotRemainder } from '../../../src/workspace/snapshot-remainder.js';
 
 const roots: string[] = [];
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -34,4 +34,16 @@ it.each(['modified', 'extra', 'mode', 'symlink', 'directory-link', 'unknown-revi
   if (kind === 'symlink') symlinkSync('../repo/file', join(remainder, 'link'));
   if (kind === 'directory-link') symlinkSync(repo, join(remainder, 'dir'));
   expect(await isSnapshotRemainder(remainder, kind === 'unknown-revision' ? '' : head, repo)).toBe(false);
+});
+
+it('requires the complete index to match a named imported snapshot, not just some cached object', async () => {
+  const { repo, remainder: cache, head } = fixture();
+  git(cache, 'init', '--bare', '-q');
+  expect(await indexMatchesImportedSnapshot(repo, cache)).toBe(false);
+  git(cache, 'fetch', repo, `${head}:refs/glassbox/cache/unknown`);
+  expect(await indexMatchesImportedSnapshot(repo, cache)).toBe(false);
+  git(cache, 'update-ref', `refs/glassbox/cache/${head}`, head);
+  expect(await indexMatchesImportedSnapshot(repo, cache)).toBe(true);
+  writeFileSync(join(repo, 'file'), 'private staged edit\n'); git(repo, 'add', 'file');
+  expect(await indexMatchesImportedSnapshot(repo, cache)).toBe(false);
 });

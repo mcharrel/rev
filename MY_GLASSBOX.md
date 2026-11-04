@@ -216,3 +216,5 @@ Own PRs offer Merge in the status dropdown, disabled for drafts and closed PRs. 
 
 - Review Git commands do not run checkout hooks that generate personal files or background jobs.
 - Retry interrupted cleanup only after checking all remaining files against the saved PR snapshot. Actual unpublished files, branches and unsafe paths remain protected. Retry transient deletion failures automatically.
+
+- Closing a managed review also recognizes a complete imported index paired with an older HEAD. Verify the whole staged tree against the independent snapshot cache; keep actual unpublished edits and local branches protected.

@@ -11,7 +11,7 @@ import { deleteReviewExport } from '../export/generate.js';
 import { gitAsync } from './checkout.js';
 import { cleanupObjectCaches, preserveBorrowedObjects, repositoryCache } from './object-cache.js';
 import { managedPath, safeHead } from './retention.js';
-import { isSnapshotRemainder } from './snapshot-remainder.js';
+import { indexMatchesImportedSnapshot, isSnapshotRemainder } from './snapshot-remainder.js';
 import { saveWorkspace, workspaceData } from './storage.js';
 
 async function ownedPath(area: 'workspaces' | 'agents', name: string): Promise<string | null> {
@@ -26,11 +26,16 @@ async function ownedPath(area: 'workspaces' | 'agents', name: string): Promise<s
   if (exists) throw new Error('Cannot close this tab: its workspace path is not a managed directory');
   return null;
 }
-async function assertDisposable(root: string, heads: string[]): Promise<void> {
+async function assertDisposable(root: string, heads: string[], importedCache?: () => Promise<string>): Promise<void> {
   const status = await gitAsync(['status', '--porcelain', '--untracked-files=all', '--ignored'], root);
   // The importer's ignored .glassbox directory contains disposable review exports.
-  if (status.split('\n').some(line => line !== '' && !line.startsWith('!! .glassbox/')))
-    throw new Error(`Cannot close this tab: unpublished files remain in ${root}`);
+  const changes = status.split('\n').filter(line => line !== '' && !line.startsWith('!! .glassbox/'));
+  if (changes.length) {
+    // Only staged differences may be a stale HEAD; untracked, ignored and unstaged work stays protected.
+    const imported = importedCache !== undefined && changes.every(line => line[1] === ' ')
+      && await indexMatchesImportedSnapshot(root, await importedCache());
+    if (!imported) throw new Error(`Cannot close this tab: unpublished files remain in ${root}`);
+  }
   const hasHead = await gitAsync(['rev-parse', '--verify', 'HEAD'], root).then(() => true, () => false);
   if (hasHead && !await safeHead(root, heads)) throw new Error(`Cannot close this tab: unpublished commits remain in ${root}`);
   if (await lstat(join(root, '.git', 'modules')).then(() => true, () => false)) throw new Error('Cannot remove a workspace with initialized submodules');
@@ -70,7 +75,7 @@ export async function discardTabData(tab: PullTab): Promise<void> {
     const remainder = tab.checkoutEvicted && !hasHead && !hasIndex && await isSnapshotRemainder(root, tab.reviewedHead, await repositoryCache(tab.ref));
     if (gitDir === null && !remainder) throw new Error('Cannot remove an unmanaged Git worktree');
     if (remainder && await lstat(join(root, '.git', 'modules')).then(() => true, () => false)) throw new Error('Cannot remove a workspace with initialized submodules');
-    if (!remainder) await assertDisposable(root, [tab.reviewedHead, tab.info?.headRefOid ?? '']);
+    if (!remainder) await assertDisposable(root, [tab.reviewedHead, tab.info?.headRefOid ?? ''], () => repositoryCache(tab.ref));
     const refs = gitDir === null ? [] : (await gitAsync(['for-each-ref', '--format=%(refname)'], root)).trim().split('\n');
     if (refs.some(ref => ref !== '' && !ref.startsWith('refs/glassbox/cache/') && !ref.startsWith('refs/remotes/')))
       throw new Error('Cannot close this tab: its workspace has local Git branches');

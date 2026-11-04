@@ -139,3 +139,34 @@ it.each(['no-marker', 'modified', 'extra', 'branch', 'staged'])('does not discar
   await expect(discardTabData(tab)).rejects.toThrow();
   expect(existsSync(root)).toBe(true); expect(await getReview(tab.reviewId!)).toBeDefined();
 });
+
+it.each(['imported', 'rename', 'unstaged', 'staged', 'untracked', 'ignored', 'branch', 'unpublished-head', 'assume-unchanged', 'skip-worktree'])('checks a staged snapshot against the imported cache before closing (%s)', async kind => {
+  const tab = await fixture(), root = tab.repoRoot!, old = tab.reviewedHead;
+  const cache = await repositoryCache(tab.ref);
+  if (kind === 'rename') git(root, 'mv', 'file.ts', 'renamed.ts');
+  else writeFileSync(join(root, 'file.ts'), 'new published snapshot\n');
+  writeFileSync(join(root, 'added.ts'), 'published addition\n'); git(root, 'add', '.');
+  git(root, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'new snapshot');
+  const imported = git(root, 'rev-parse', 'HEAD');
+  git(cache, 'fetch', root, `${imported}:refs/glassbox/cache/${imported}`);
+  // Interrupted refresh: index/files are newer than HEAD and the saved review revision.
+  git(root, 'update-ref', '--no-deref', 'HEAD', old);
+  if (kind === 'unstaged' || kind === 'staged') writeFileSync(join(root, 'file.ts'), 'unpublished edit');
+  if (kind === 'staged') git(root, 'add', 'file.ts');
+  if (kind === 'untracked' || kind === 'ignored') writeFileSync(join(root, 'private.txt'), 'personal');
+  if (kind === 'ignored') writeFileSync(join(root, '.git/info/exclude'), 'private.txt\n');
+  if (kind === 'assume-unchanged' || kind === 'skip-worktree') {
+    git(root, 'update-index', `--${kind}`, 'file.ts'); writeFileSync(join(root, 'file.ts'), 'hidden private edit');
+  }
+  if (kind === 'branch') git(root, 'branch', 'local-work');
+  if (kind === 'unpublished-head') {
+    git(root, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'unpublished history');
+  }
+  const app = new Hono<AppEnv>().use('*', async (c, next) => { c.set('reviewId', tab.reviewId!); await next(); }).route('/workspace', workspaceRoutes);
+  const response = await app.request('/workspace', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'close', key: tab.key }) });
+  const disposable = kind === 'imported' || kind === 'rename';
+  expect(response.status).toBe(disposable ? 200 : 400);
+  expect(existsSync(root)).toBe(!disposable);
+  expect(mocks.data.tabs.includes(tab)).toBe(!disposable);
+  expect(Boolean(await getReview(tab.reviewId!))).toBe(!disposable);
+});

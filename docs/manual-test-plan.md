@@ -373,3 +373,5 @@ Automated coverage: header order, per-PR request lifecycle, polling, duplicate s
 - Previously private replies misrouted to Codex stay local after upgrading; stale pickup indicators disappear and they are never published retroactively. Unit and HTTP integration tests cover routing, queue/recovery and pickup gates without posting real test comments.
 
 - Interrupted close: after a partially deleted managed checkout is reopened, closing it succeeds if its remaining files exactly match its saved snapshot. Extra/edited files remain protected. Real-Git unit and HTTP tests cover this without accessing live PRs; imported snapshots also suppress checkout hooks.
+
+- Stale-HEAD cleanup: a complete staged snapshot already present in rev’s imported cache closes through the normal API; arbitrary staged/unstaged edits remain protected. Synthetic unit and HTTP regression tests cover this without touching real PR data.
