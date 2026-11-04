@@ -9,8 +9,9 @@ import { getDataDir, getDb } from '../db/connection.js';
 import { deleteReview, getReview } from '../db/queries.js';
 import { deleteReviewExport } from '../export/generate.js';
 import { gitAsync } from './checkout.js';
-import { cleanupObjectCaches, preserveBorrowedObjects } from './object-cache.js';
+import { cleanupObjectCaches, preserveBorrowedObjects, repositoryCache } from './object-cache.js';
 import { managedPath, safeHead } from './retention.js';
+import { isSnapshotRemainder } from './snapshot-remainder.js';
 import { saveWorkspace, workspaceData } from './storage.js';
 
 async function ownedPath(area: 'workspaces' | 'agents', name: string): Promise<string | null> {
@@ -55,22 +56,35 @@ export async function discardTabData(tab: PullTab): Promise<void> {
   if (root !== null) {
     if (workspaceData().tabs.some(other => other !== tab && other.repoRoot === root))
       throw new Error('Cannot close this tab: its checkout is attached to another open review');
-    if (!(await lstat(join(root, '.git'))).isDirectory()) throw new Error('Cannot remove an unmanaged Git worktree');
-    await assertDisposable(root, [tab.reviewedHead, tab.info?.headRefOid ?? '']);
-    const refs = (await gitAsync(['for-each-ref', '--format=%(refname)'], root)).trim().split('\n');
+    const gitDir = await lstat(join(root, '.git')).catch((error: unknown) => {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null;
+      throw error;
+    });
+    if (gitDir !== null && !gitDir.isDirectory()) throw new Error('Cannot remove an unmanaged Git worktree');
+    const hasHead = gitDir !== null && await gitAsync(['rev-parse', '--verify', 'HEAD'], root).then(() => true, () => false);
+    const hasIndex = gitDir !== null && await lstat(join(root, '.git', 'index')).then(() => true, (error: unknown) => {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return false;
+      throw error;
+    });
+    // The eviction marker is persisted before rm; a retry may find source bytes but no Git index/HEAD.
+    const remainder = tab.checkoutEvicted && !hasHead && !hasIndex && await isSnapshotRemainder(root, tab.reviewedHead, await repositoryCache(tab.ref));
+    if (gitDir === null && !remainder) throw new Error('Cannot remove an unmanaged Git worktree');
+    if (remainder && await lstat(join(root, '.git', 'modules')).then(() => true, () => false)) throw new Error('Cannot remove a workspace with initialized submodules');
+    if (!remainder) await assertDisposable(root, [tab.reviewedHead, tab.info?.headRefOid ?? '']);
+    const refs = gitDir === null ? [] : (await gitAsync(['for-each-ref', '--format=%(refname)'], root)).trim().split('\n');
     if (refs.some(ref => ref !== '' && !ref.startsWith('refs/glassbox/cache/') && !ref.startsWith('refs/remotes/')))
       throw new Error('Cannot close this tab: its workspace has local Git branches');
-    const worktrees = (await gitAsync(['worktree', 'list', '--porcelain'], root)).split('\n')
+    const worktrees = (gitDir === null ? '' : await gitAsync(['worktree', 'list', '--porcelain'], root)).split('\n')
       .filter(line => line.startsWith('worktree ')).map(line => line.slice(9));
     if (worktrees.some(path => path !== root && !agents.some(agent => agent.root === path)))
       throw new Error('Cannot close this tab: another working tree still uses its Git repository');
-    await preserveBorrowedObjects(root);
+    if (await lstat(join(root, '.git', 'objects')).then(() => true, () => false)) await preserveBorrowedObjects(root);
   }
   for (const agent of agents) await gitAsync(['--git-dir', agent.common, 'worktree', 'remove', agent.root], dirname(agent.common));
   if (root !== null) {
     tab.checkoutEvicted = true;
     saveWorkspace();
-    await rm(root, { recursive: true });
+    await rm(root, { recursive: true, maxRetries: 3, retryDelay: 100 });
   }
   // Cache collection is retryable housekeeping, never a reason to restore a deleted tab.
   await cleanupObjectCaches().catch((error: unknown) => { console.warn(`Git cache cleanup deferred: ${String(error)}`); });

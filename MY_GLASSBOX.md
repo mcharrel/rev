@@ -211,3 +211,8 @@ Own PRs offer Merge in the status dropdown, disabled for drafts and closed PRs. 
 
 - Determine the original author through local and GitHub reply chains before queueing, sending, listing, retrying, picking up or answering a Codex request. Missing/cyclic ancestry and unknown identity cannot grant access.
 - Show the GitHub composer for replies to other reviewers on my own PRs. Clear obsolete Codex deliveries/status indicators without publishing any previously private replies; fresh replies follow the corrected route.
+
+### Reliable cleanup after interrupted deletion
+
+- Review Git commands do not run checkout hooks that generate personal files or background jobs.
+- Retry interrupted cleanup only after checking all remaining files against the saved PR snapshot. Actual unpublished files, branches and unsafe paths remain protected. Retry transient deletion failures automatically.

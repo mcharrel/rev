@@ -15,6 +15,7 @@ import { createAnalysis } from '../../../src/db/ai-queries.js';
 import { createAttachment } from '../../../src/db/attachment-queries.js';
 import { addAnnotation, addReviewFile, createReview, getReview, getReviewFiles } from '../../../src/db/queries.js';
 import { discardTabData } from '../../../src/workspace/discard.js';
+import { repositoryCache } from '../../../src/workspace/object-cache.js';
 import { workspaceRoutes } from '../../../src/workspace/routes.js';
 import type { AppEnv } from '../../../src/types.js';
 
@@ -108,4 +109,33 @@ it('discards generated review exports inside its owned checkout', async () => {
   writeFileSync(join(tab.repoRoot!, '.glassbox', 'latest-review.md'), 'Generated review export');
   await discardTabData(tab);
   expect(existsSync(tab.repoRoot!)).toBe(false); expect(await getReview(tab.reviewId!)).toBeUndefined();
+});
+
+it.each(['missing-git', 'reinitialized-git'])('closes a partially removed snapshot through HTTP (%s)', async kind => {
+  const tab = await fixture(), root = tab.repoRoot!;
+  const cache = await repositoryCache(tab.ref);
+  git(cache, 'fetch', root, `${tab.reviewedHead}:refs/glassbox/cache/${tab.reviewedHead}`);
+  tab.checkoutEvicted = true;
+  rmSync(join(root, '.git'), { recursive: true });
+  if (kind === 'reinitialized-git') git(root, 'init', '-q');
+  const app = new Hono<AppEnv>().use('*', async (c, next) => { c.set('reviewId', tab.reviewId!); await next(); }).route('/workspace', workspaceRoutes);
+  const response = await app.request('/workspace', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'close', key: tab.key }) });
+  expect(response.status).toBe(200); expect((await response.json()).tabs).toEqual([]);
+  expect(existsSync(root)).toBe(false); expect(await getReview(tab.reviewId!)).toBeUndefined();
+});
+it.each(['no-marker', 'modified', 'extra', 'branch', 'staged'])('does not discard unproven interrupted work (%s)', async kind => {
+  const tab = await fixture(), root = tab.repoRoot!;
+  const cache = await repositoryCache(tab.ref);
+  git(cache, 'fetch', root, `${tab.reviewedHead}:refs/glassbox/cache/${tab.reviewedHead}`);
+  tab.checkoutEvicted = kind !== 'no-marker';
+  rmSync(join(root, '.git'), { recursive: true }); git(root, 'init', '-q');
+  if (kind === 'modified') writeFileSync(join(root, 'file.ts'), 'unpublished');
+  if (kind === 'extra') writeFileSync(join(root, 'personal.txt'), 'personal');
+  if (kind === 'staged') {
+    writeFileSync(join(root, 'file.ts'), 'staged work'); git(root, 'add', 'file.ts');
+    writeFileSync(join(root, 'file.ts'), 'source\n');
+  }
+  if (kind === 'branch') { git(root, 'fetch', cache, tab.reviewedHead); git(root, 'branch', 'saved', tab.reviewedHead); }
+  await expect(discardTabData(tab)).rejects.toThrow();
+  expect(existsSync(root)).toBe(true); expect(await getReview(tab.reviewId!)).toBeDefined();
 });

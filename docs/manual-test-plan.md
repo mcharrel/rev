@@ -371,3 +371,5 @@ Automated coverage: header order, per-PR request lifecycle, polling, duplicate s
 
 - On your own PR, post a new code thread and follow up after a Codex reply: both requests reach the originating chat. Reply in a thread started by another reviewer: the composer says GitHub, the reply appears on GitHub and no Codex pickup/status appears. Replying to your own previous reply in that reviewer’s thread has the same GitHub behavior.
 - Previously private replies misrouted to Codex stay local after upgrading; stale pickup indicators disappear and they are never published retroactively. Unit and HTTP integration tests cover routing, queue/recovery and pickup gates without posting real test comments.
+
+- Interrupted close: after a partially deleted managed checkout is reopened, closing it succeeds if its remaining files exactly match its saved snapshot. Extra/edited files remain protected. Real-Git unit and HTTP tests cover this without accessing live PRs; imported snapshots also suppress checkout hooks.

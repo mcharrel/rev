@@ -28,7 +28,8 @@ export async function gitAuthEnv(tab: Pick<PullTab, 'ref'>): Promise<NodeJS.Proc
 export async function gitAsync(args: string[], cwd: string, env?: NodeJS.ProcessEnv): Promise<string> {
   const run = async () => {
     try {
-      const { stdout } = await exec('git', args, {
+      // Review snapshots must not run user/repository hooks that generate files or background jobs.
+      const { stdout } = await exec('git', ['-c', 'core.hooksPath=/dev/null', ...args], {
         cwd, env: env ?? process.env, timeout: 180000, maxBuffer: 64 * 1024 * 1024,
       });
       return stdout;

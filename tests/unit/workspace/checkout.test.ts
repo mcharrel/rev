@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
@@ -42,7 +42,12 @@ it('shares independent snapshots across PRs without modifying or depending on th
     mocks.file.mockClear();
     await importPull(tab, canApply);
     expect(tab.reviewId).toBeNull(); expect(mocks.file).not.toHaveBeenCalled();
+    const checkout = join(mocks.dataDir, 'workspaces/example-project-1');
+    const hooks = join(root, 'hooks'); mkdirSync(hooks);
+    writeFileSync(join(hooks, 'post-checkout'), '#!/bin/sh\ntouch generated-local-file\n', { mode: 0o755 });
+    git(checkout, 'config', 'core.hooksPath', hooks);
     await importPull(tab);
+    expect(existsSync(join(checkout, 'generated-local-file'))).toBe(false);
     expect(tab.reviewId).toBe('review');
     expect(readFileSync(join(source, 'file.ts'), 'utf8')).toBe('user work\n');
     expect(git(source, 'rev-parse', 'HEAD')).toBe(base);
