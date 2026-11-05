@@ -14,9 +14,14 @@ export const OutboxItemSchema = z.object({
   nextAttempt: z.number().default(0),
   attempted: z.boolean().default(false),
 });
+export const PendingDeletionSchema = PullTabSchema.pick({ key: true, ref: true, reviewId: true, repoRoot: true }).extend({
+  agents: z.array(z.string()),
+});
+export type PendingDeletion = z.infer<typeof PendingDeletionSchema>;
 const DiskSchema = WorkspaceSchema.extend({
   outbox: z.array(OutboxItemSchema).default([]),
   archived: z.array(PullTabSchema).default([]),
+  pendingDeletes: z.array(PendingDeletionSchema).optional(),
   hasOpenedPullRequest: z.boolean().optional(),
 });
 export type WorkspaceDisk = z.infer<typeof DiskSchema>;

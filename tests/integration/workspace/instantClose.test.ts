@@ -18,6 +18,7 @@ vi.mock('../../../src/workspace/checkout.js', () => ({ importPull: vi.fn(), ensu
 vi.mock('../../../src/workspace/deployments.js', () => ({ refreshDeployment: vi.fn(), cancelDeployment: vi.fn(), stopDeployments: vi.fn() }));
 vi.mock('../../../src/workspace/slack-reactions.js', () => ({ cancelSlackReaction: vi.fn() }));
 import { workspaceRoutes } from '../../../src/workspace/routes.js';
+import { closedTabs } from '../../../src/client/workspace/closedTabs.js';
 import { mutate, refreshWorkspace, retainedTabs, workspace } from '../../../src/client/workspace/state.js';
 
 const app = new Hono<AppEnv>().use('*', async (c, next) => { c.set('reviewId', 'review-1'); await next(); }).route('/workspace', workspaceRoutes);
@@ -28,7 +29,9 @@ const tab = (number: number) => PullTabSchema.parse({
 });
 afterEach(() => vi.unstubAllGlobals());
 it.each([false, true])('hides a tab immediately while real HTTP cleanup waits, keeps remaining tabs usable, and handles completion (failure: %s)', async failure => {
+  closedTabs.value = new Set();
   vi.stubGlobal('document', { querySelector: () => null, querySelectorAll: () => [] });
+  mocks.data.pendingDeletes = [];
   mocks.data.tabs = [tab(1), tab(2), tab(3)]; mocks.data.active = mocks.data.tabs[0].key;
   workspace.value = WorkspaceSchema.parse(mocks.data);
   mocks.get.mockImplementation(async () => WorkspaceSchema.parse(await (await app.request('/workspace')).json()));
@@ -45,7 +48,8 @@ it.each([false, true])('hides a tab immediately while real HTTP cleanup waits, k
   expect(workspace.value.active).toBe('example/project#2');
   await vi.waitFor(() => expect(finish).toBeDefined());
   // Deletion is still pending on the server, but polls cannot restore its tab.
-  expect(mocks.data.tabs).toHaveLength(3);
+  expect(mocks.data.tabs).toHaveLength(2);
+  expect(await close).toBe(true);
   await refreshWorkspace();
   expect(workspace.value.tabs.map(t => t.ref.number)).toEqual([2, 3]);
   workspace.value = { ...workspace.value, active: 'example/project#3' };
@@ -54,10 +58,10 @@ it.each([false, true])('hides a tab immediately while real HTTP cleanup waits, k
   expect(workspace.value.tabs.map(t => t.ref.number)).toEqual([3, 2]);
   expect(workspace.value.active).toBe('example/project#3');
   if (failure) fail(new Error('Unpublished source must be kept')); else finish();
-  expect(await close).toBe(!failure);
+  expect(await close).toBe(true);
   await refreshWorkspace();
   expect(workspace.value.active).toBe('example/project#3');
-  expect(retainedTabs().some(t => t.ref.number === 1)).toBe(failure);
-  expect(mocks.data.tabs.some(t => t.ref.number === 1)).toBe(failure);
+  expect(retainedTabs().some(t => t.ref.number === 1)).toBe(false);
+  expect(mocks.data.tabs.some(t => t.ref.number === 1)).toBe(false);
   expect(mocks.data.archived).toEqual([]);
 });

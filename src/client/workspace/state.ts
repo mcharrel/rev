@@ -8,6 +8,7 @@ import {
   type WorkspaceMutation,
 } from '../../api/workspace.js';
 import { showToast } from '../toast.js';
+import { acknowledgeClose, closedTabs, forgetClose, pendingCloses, rememberClose } from './closedTabs.js';
 
 export const workspace = signal<Workspace>({ tabs: [], active: null });
 export const addingPull = signal(false);
@@ -25,20 +26,18 @@ export function activeReviewReady(): boolean {
   return tab !== undefined && !tab.checkoutEvicted && tab.reviewId !== null && reviewLoadState.value.key === reviewSessionKey(tab)
     && reviewLoadState.value.status === 'ready';
 }
-interface PendingClose { tab: PullTab; order: string[] }
-const pendingCloses = signal<ReadonlyMap<string, PendingClose>>(new Map());
-// Retain drafts and reading state only until deletion succeeds or rolls back.
-export function retainedTabs(): PullTab[] {
-  return [...workspace.value.tabs, ...[...pendingCloses.value.values()].map(close => close.tab)];
-}
+export function retainedTabs(): PullTab[] { return workspace.value.tabs; }
 let mutationVersion = 0;
 let closeVersion = 0;
 function receive(state: Workspace, preserveSelection: boolean): void {
   workspaceLoaded.value = true;
   const local = workspace.value;
   const openedExternally = (state.externalSelection ?? 0) !== (local.externalSelection ?? 0);
-  if (openedExternally) addingPull.value = false;
-  const tabs = state.tabs.filter(tab => !pendingCloses.value.has(tab.key));
+  if (openedExternally) {
+    addingPull.value = false;
+    if (state.active !== null && !pendingCloses().includes(state.active)) forgetClose(state.active);
+  }
+  const tabs = state.tabs.filter(tab => !closedTabs.value.has(tab.key) && !pendingCloses().includes(tab.key));
   const selected = preserveSelection && !openedExternally ? local.active : state.active;
   workspace.value = { ...state,
     active: tabs.some(tab => tab.key === selected) ? selected : tabs.find(tab => tab.key === state.active)?.key ?? tabs.at(0)?.key ?? null,
@@ -51,6 +50,12 @@ export function activeTab(): PullTab | undefined {
 export async function refreshWorkspace(preserveSelection = true): Promise<void> {
   const version = mutationVersion;
   const closed = closeVersion;
+  for (const key of pendingCloses()) {
+    closedTabs.value = new Set([...closedTabs.value, key]);
+    if (closingPulls.value.has(key)) continue;
+    try { await changeWorkspace({ op: 'close', key }); acknowledgeClose(key); }
+    catch { /* Keep the close hidden and retry on the next poll. */ }
+  }
   const state = await getWorkspace();
   if (version !== mutationVersion || closed !== closeVersion) return;
   // Keep editors intact while background synchronization continues on the server.
@@ -63,21 +68,9 @@ export async function refreshWorkspace(preserveSelection = true): Promise<void> 
     return;
   receive(state, preserveSelection);
 }
-function finishClose(key: string, error?: string): void {
-  const saved = pendingCloses.value.get(key);
-  // Invalidate snapshots requested before cleanup finished, including background polls.
+function finishClose(key: string): void {
   closeVersion++;
-  batch(() => {
-    if (saved && error !== undefined && !workspace.value.tabs.some(tab => tab.key === key)) {
-      const tabs = [...workspace.value.tabs];
-      const next = saved.order.slice(saved.order.indexOf(key) + 1).find(item => tabs.some(tab => tab.key === item));
-      const index = next === undefined ? tabs.length : tabs.findIndex(tab => tab.key === next);
-      tabs.splice(index, 0, { ...saved.tab, error });
-      workspace.value = { ...workspace.value, tabs, active: workspace.value.active ?? key };
-    }
-    pendingCloses.value = new Map([...pendingCloses.value].filter(([item]) => item !== key));
-    closingPulls.value = new Set([...closingPulls.value].filter(item => item !== key));
-  });
+  closingPulls.value = new Set([...closingPulls.value].filter(item => item !== key));
 }
 export async function mutate(input: WorkspaceMutation): Promise<boolean> {
   if (input.op === 'close') {
@@ -86,7 +79,7 @@ export async function mutate(input: WorkspaceMutation): Promise<boolean> {
     const tab = local.tabs.find(item => item.key === input.key);
     if (!tab) return false;
     batch(() => {
-      pendingCloses.value = new Map([...pendingCloses.value, [input.key, { tab, order: local.tabs.map(item => item.key) }]]);
+      rememberClose(input.key);
       closingPulls.value = new Set([...closingPulls.value, input.key]);
       const tabs = local.tabs.filter(item => item !== tab);
       workspace.value = { ...local, tabs, active: local.active === input.key ? tabs.at(0)?.key ?? null : local.active };
@@ -101,15 +94,16 @@ export async function mutate(input: WorkspaceMutation): Promise<boolean> {
   try {
     const result = await changeWorkspace(input);
     const fresh = closed === closeVersion;
-    if (input.op === 'close') finishClose(input.key);
+    if (input.op === 'close') { acknowledgeClose(input.key); finishClose(input.key); }
+    if (input.op === 'open' && version === mutationVersion && result.active !== null) forgetClose(result.active);
     if (version === mutationVersion && fresh) receive(result, input.op !== 'open');
     else if (!fresh || input.op === 'close' || input.op === 'merge')
       void refreshWorkspace(version !== mutationVersion || input.op !== 'open').catch(() => {});
     return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Request failed';
-    if (input.op === 'close') finishClose(input.key, message);
-    showToast(input.op === 'close' ? `Couldn’t close ${input.key}: ${message}` : message);
+    if (input.op === 'close') { finishClose(input.key); return true; }
+    showToast(message);
     return false;
   } finally {
     if (input.op === 'merge') mergingPulls.value = new Set([...mergingPulls.value].filter(key => key !== input.key));

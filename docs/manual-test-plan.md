@@ -341,7 +341,7 @@ Automated coverage: header order, per-PR request lifecycle, polling, duplicate s
 ## Closing tabs during background work
 
 - Start a Slack review reaction, select another PR and close it. Close immediately removes the tab; other tabs and Share remain usable. It does not wait for Slack or remote metadata/comments. Legacy shared objects are retained in an independent cache without repacking.
-- Switch tabs while a close is pending: the closing tab remains hidden until cleanup succeeds or fails. Repeated clicks do not start duplicate deletion. An unsafe checkout stays visible with an error and can be retried after its unpublished work is preserved.
+- Switch tabs while cleanup is pending: the closed tab stays permanently gone whether cleanup succeeds or fails. Repeated clicks do not duplicate deletion. Restart and refresh must not restore closed tabs; explicitly reopening starts a fresh review. Check the same behavior while the local server is temporarily unreachable.
 - API integration and unit tests cover pending Slack/GitHub reads, late responses, close/reopen, source-operation safety, progress and retries. Visual checks remain manual under the no-UI-automation preference.
 
 ## Code conversation cards

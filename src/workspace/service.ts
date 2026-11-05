@@ -27,8 +27,8 @@ import { parseDiffData } from '../git/parseDiffData.js';
 import { githubAccount } from './accounts.js';
 import { ensureCheckout, importPull } from './checkout.js';
 import { flushCodexComments, queueCodexComment, reconcileCodexComment, recoverCodexComments, retryCodexComment, reviseComment } from './codex.js';
+import { finishDeletion, queueDeletion, retryDeletions } from './deletion.js';
 import { cancelDeployment, refreshDeployment, stopDeployments } from './deployments.js';
-import { discardTabData } from './discard.js';
 import {
   github,
   loadComments,
@@ -40,7 +40,7 @@ import {
   RemoteCommentSchema,
   repoApi,
 } from './github.js';
-import { closingTabs, waitForCheckouts, withCheckoutLock, writeGitStorage } from './lifecycle.js';
+import { closingTabs } from './lifecycle.js';
 import { mergePull } from './merge.js';
 import { hasCodeFocus, notify } from './notifications.js';
 import { startWorkspaceCleanup } from './retention.js';
@@ -281,6 +281,8 @@ function needsInitialSync(tab: PullTab): boolean {
 }
 export function startWorkspace(pinnedRoot?: string): () => void {
   const data = workspaceData();
+  for (const tab of [...data.archived]) discardTab(tab);
+  retryDeletions();
   recoverCodexComments();
   recoverSlackReactions();
   for (const tab of [...data.tabs, ...data.archived]) {
@@ -301,14 +303,8 @@ export function startWorkspace(pinnedRoot?: string): () => void {
     else if (tab.key === data.active) void ensureCheckout(tab).catch(() => {});
   }
   saveWorkspace();
-  for (const tab of [...data.archived]) void discardTab(tab).catch((error: unknown) => {
-    // Never hide retained local work after a failed cleanup.
-    data.archived = data.archived.filter(item => item !== tab);
-    if (!data.tabs.some(item => item.key === tab.key)) data.tabs.push(tab);
-    tab.error = String(error);
-    saveWorkspace();
-  });
   const refreshTimer = setInterval(() => {
+    retryDeletions();
     for (const tab of workspaceData().tabs) {
       const mode = needsInitialSync(tab) && !tab.checkoutEvicted ? 'initial' : 'background';
       void syncTab(tab, mode);
@@ -573,37 +569,26 @@ export async function flushOutbox(): Promise<void> {
     flushing = false;
   }
 }
-const discarding = new Map<string, Promise<void>>();
-let discardQueue: Promise<void> = Promise.resolve();
-async function discardTab(tab: PullTab): Promise<void> {
-  const existing = discarding.get(tab.key);
-  if (existing) return existing;
+function discardTab(tab: PullTab): void {
+  const data = workspaceData();
   closingTabs.add(tab);
   cancelDeployment(tab);
   cancelSlackReaction(tab);
-  const pending = discardQueue.catch(() => {}).then(async () => {
-    // Remote reads already reject closed tabs; only source operations must finish before deletion.
-    await waitForCheckouts();
-    await writeGitStorage(() => withCheckoutLock(tab.key, () => discardTabData(tab)));
-    const data = workspaceData();
-    data.tabs = data.tabs.filter(item => item !== tab);
-    data.archived = data.archived.filter(item => item !== tab);
-    data.outbox = data.outbox.filter(item => item.tab !== tab.key);
-    if (data.active === tab.key) data.active = data.tabs[0]?.key ?? null;
-    syncing.delete(tab.key);
-    saveWorkspace();
-  }).finally(() => { closingTabs.delete(tab); discarding.delete(tab.key); });
-  discardQueue = pending;
-  discarding.set(tab.key, pending);
-  return pending;
+  // Closing is a durable user decision; filesystem cleanup cannot roll it back.
+  data.tabs = data.tabs.filter(item => item !== tab);
+  data.archived = data.archived.filter(item => item !== tab);
+  data.outbox = data.outbox.filter(item => item.tab !== tab.key);
+  if (data.active === tab.key) data.active = data.tabs[0]?.key ?? null;
+  syncing.delete(tab.key);
+  queueDeletion(tab);
 }
 export async function mutateWorkspace(input: WorkspaceMutation, currentReviewId: string): Promise<void> {
   const data = workspaceData();
   if (input.op === 'open') {
     const ref = parsePullUrl(input.url);
-    await discarding.get(pullKey(ref));
+    await finishDeletion(pullKey(ref));
     const archived = data.archived.find(t => t.key === pullKey(ref));
-    if (archived) await discardTab(archived);
+    if (archived) { discardTab(archived); await finishDeletion(archived.key); }
     let tab = data.tabs.find((t) => t.key === pullKey(ref));
     if (!tab) {
       tab = PullTabSchema.parse({
@@ -645,7 +630,16 @@ export async function mutateWorkspace(input: WorkspaceMutation, currentReviewId:
     saveWorkspace();
     return;
   }
-  if (input.op === 'close' && discarding.has(input.key)) { await discarding.get(input.key); return; }
+  if (input.op === 'close') {
+    const tab = data.tabs.find(item => item.key === input.key);
+    if (tab) {
+      discardTab(tab);
+      const next = data.tabs.find(item => item.key === data.active);
+      if (next) void ensureCheckout(next).catch(() => {});
+    }
+    else { saveWorkspace(); retryDeletions(); }
+    return;
+  }
   const tab = requireTab(input.key);
   tab.lastUsedAt = Date.now();
   if (input.op === 'retry-slack') retrySlackReaction(tab);
@@ -666,11 +660,6 @@ export async function mutateWorkspace(input: WorkspaceMutation, currentReviewId:
     else void ensureCheckout(tab).catch(() => {});
   }
   if (input.op === 'view') tab.view = input.view;
-  if (input.op === 'close') {
-    await discardTab(tab);
-    const next = data.tabs.find(item => item.key === data.active);
-    if (next) void ensureCheckout(next).catch(() => {});
-  }
   if (input.op === 'refresh') {
     tab.loading = true;
     saveWorkspace();

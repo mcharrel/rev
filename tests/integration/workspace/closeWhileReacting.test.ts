@@ -57,7 +57,7 @@ it('approves, switches and closes tabs through the API while Slack and GitHub re
     expect(first.slackReaction?.status).toBe('pending'); expect(slackSignal.aborted).toBe(false);
     expect((await request({ op: 'close', key: first.key })).status).toBe(200);
     expect(slackSignal.aborted).toBe(true); expect(mocks.data.tabs).toEqual([]);
-    expect(mocks.discard).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(mocks.discard).toHaveBeenCalledTimes(2));
   } finally {
     pendingReads.forEach(finish => finish()); finishSlack();
     await Promise.all([firstSync, secondSync]);

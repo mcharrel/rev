@@ -14,6 +14,7 @@ vi.mock('../../../src/workspace/storage.js', () => ({ workspaceData: () => mocks
 import { createAnalysis } from '../../../src/db/ai-queries.js';
 import { createAttachment } from '../../../src/db/attachment-queries.js';
 import { addAnnotation, addReviewFile, createReview, getReview, getReviewFiles } from '../../../src/db/queries.js';
+import { finishDeletion } from '../../../src/workspace/deletion.js';
 import { discardTabData } from '../../../src/workspace/discard.js';
 import { repositoryCache } from '../../../src/workspace/object-cache.js';
 import { workspaceRoutes } from '../../../src/workspace/routes.js';
@@ -73,6 +74,7 @@ it('retains borrowed Git objects without repacking even with a broken cache ref 
   writeFileSync(join(borrower.repoRoot!, '.git/refs/glassbox/cache/broken'), 'a'.repeat(40) + '\n');
   const app = new Hono<AppEnv>().use('*', async (c, next) => { c.set('reviewId', provider.reviewId!); await next(); }).route('/workspace', workspaceRoutes);
   const response = await app.request('/workspace', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'close', key: provider.key }) });
+  await finishDeletion(provider.key);
   expect(response.status).toBe(200);
   expect((await response.json()).tabs.map((tab: { key: string }) => tab.key)).toEqual([borrower.key]);
   expect(existsSync(provider.repoRoot!)).toBe(false);
@@ -120,6 +122,7 @@ it.each(['missing-git', 'reinitialized-git'])('closes a partially removed snapsh
   if (kind === 'reinitialized-git') git(root, 'init', '-q');
   const app = new Hono<AppEnv>().use('*', async (c, next) => { c.set('reviewId', tab.reviewId!); await next(); }).route('/workspace', workspaceRoutes);
   const response = await app.request('/workspace', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'close', key: tab.key }) });
+  await finishDeletion(tab.key);
   expect(response.status).toBe(200); expect((await response.json()).tabs).toEqual([]);
   expect(existsSync(root)).toBe(false); expect(await getReview(tab.reviewId!)).toBeUndefined();
 });
@@ -140,7 +143,7 @@ it.each(['no-marker', 'modified', 'extra', 'branch', 'staged'])('does not discar
   expect(existsSync(root)).toBe(true); expect(await getReview(tab.reviewId!)).toBeDefined();
 });
 
-it.each(['imported', 'rename', 'unstaged', 'staged', 'untracked', 'ignored', 'branch', 'unpublished-head', 'assume-unchanged', 'skip-worktree'])('checks a staged snapshot against the imported cache before closing (%s)', async kind => {
+it.each(['imported', 'rename', 'unstaged', 'staged', 'untracked', 'ignored', 'branch', 'unpublished-head', 'assume-unchanged', 'skip-worktree'])('closes and deletes app-owned source regardless of its local state (%s)', async kind => {
   const tab = await fixture(), root = tab.repoRoot!, old = tab.reviewedHead;
   const cache = await repositoryCache(tab.ref);
   if (kind === 'rename') git(root, 'mv', 'file.ts', 'renamed.ts');
@@ -164,9 +167,9 @@ it.each(['imported', 'rename', 'unstaged', 'staged', 'untracked', 'ignored', 'br
   }
   const app = new Hono<AppEnv>().use('*', async (c, next) => { c.set('reviewId', tab.reviewId!); await next(); }).route('/workspace', workspaceRoutes);
   const response = await app.request('/workspace', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'close', key: tab.key }) });
-  const disposable = kind === 'imported' || kind === 'rename';
-  expect(response.status).toBe(disposable ? 200 : 400);
-  expect(existsSync(root)).toBe(!disposable);
-  expect(mocks.data.tabs.includes(tab)).toBe(!disposable);
-  expect(Boolean(await getReview(tab.reviewId!))).toBe(!disposable);
+  expect(response.status).toBe(200);
+  expect(mocks.data.tabs).toEqual([]);
+  await finishDeletion(tab.key);
+  expect(existsSync(root)).toBe(false);
+  expect(await getReview(tab.reviewId!)).toBeUndefined();
 });

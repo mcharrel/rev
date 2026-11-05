@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PullTabSchema, viewerReviewState } from '../../../src/api/workspace.js';
 
 const mocks = vi.hoisted(() => ({
-  data: { tabs: [] as any[], archived: [] as any[], active: null as string | null, outbox: [] as any[] },
+  data: { pendingDeletes: [] as any[], tabs: [] as any[], archived: [] as any[], active: null as string | null, outbox: [] as any[] },
   github: vi.fn(),
   save: vi.fn(),
   agent: vi.fn(),
@@ -66,6 +66,7 @@ beforeEach(() => {
   });
   mocks.data.tabs = [tab()];
   mocks.data.archived = [];
+  mocks.data.pendingDeletes = [];
   mocks.data.outbox = [];
   mocks.data.active = 'example/project#1';
 });
@@ -108,7 +109,7 @@ describe('durable comment outbox', () => {
     expect(mocks.data.tabs).toHaveLength(0);
     expect(mocks.data.archived).toHaveLength(0);
     expect(mocks.data.outbox).toHaveLength(0);
-    expect(mocks.discard).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(mocks.discard).toHaveBeenCalledTimes(1));
     mocks.github.mockResolvedValueOnce([]).mockResolvedValueOnce(remote(12));
     now += 300000;
     await flushOutbox();
@@ -430,16 +431,17 @@ describe('GitHub refresh', () => {
   });
 });
 
-it('recovers interrupted agents in closed tabs so they cannot block retention forever', () => {
+it('purges archived tabs and queues only cleanup identifiers even after an interrupted agent', () => {
   const archived = tab(2);
   archived.loading = true;
   archived.comments.push({ id: 'a', kind: 'ai', status: 'working', body: 'Working', author: 'AI', date: '', url: '', editable: false, deleted: false });
   mocks.data.tabs = []; mocks.data.archived = [archived];
   const stop = startWorkspace();
   try {
-    expect(archived.loading).toBe(false);
-    expect(archived.comments[0].status).toBe('error');
-    expect(archived.comments[0].error).toContain('local edits were preserved');
+    expect(mocks.data.archived).toEqual([]);
+    expect(mocks.data.tabs).toEqual([]);
+    expect(mocks.data.pendingDeletes[0].agents).toEqual(['a']);
+    expect(mocks.data.pendingDeletes[0]).not.toHaveProperty('comments');
   } finally { stop(); }
 });
 it('migrates an existing code conversation to local-only and preserves it while syncing resolution', async () => {
@@ -678,11 +680,13 @@ it('starts a fresh review after closing and reopening the same PR', async () => 
   expect(mocks.data.tabs[0].reviewId).toBeNull();
   await syncTab(mocks.data.tabs[0]);
 });
-it('leaves the tab visible if its unpublished source cannot be discarded', async () => {
+it('keeps the tab permanently closed even when cleanup fails', async () => {
   const old = mocks.data.tabs[0];
   mocks.discard.mockRejectedValue(new Error('Unpublished changes'));
-  await expect(mutateWorkspace({ op: 'close', key: old.key }, 'review')).rejects.toThrow('Unpublished changes');
-  expect(mocks.data.tabs).toEqual([old]); expect(mocks.data.active).toBe(old.key);
+  await expect(mutateWorkspace({ op: 'close', key: old.key }, 'review')).resolves.toBeUndefined();
+  await vi.waitFor(() => expect(mocks.discard).toHaveBeenCalled());
+  expect(mocks.data.tabs).toEqual([]); expect(mocks.data.active).toBeNull();
+  expect(mocks.data.pendingDeletes).toHaveLength(1);
   expect(mocks.data.archived).toEqual([]);
 });
 it('closes without waiting for metadata and prevents its late response from restarting an import', async () => {
@@ -691,7 +695,7 @@ it('closes without waiting for metadata and prevents its late response from rest
   vi.mocked(loadPull).mockImplementationOnce(() => new Promise(done => { resolve = done; }));
   const sync = syncTab(old);
   await mutateWorkspace({ op: 'close', key: old.key }, 'review');
-  expect(mocks.discard).toHaveBeenCalledWith(old);
+  await vi.waitFor(() => expect(mocks.discard).toHaveBeenCalledWith(expect.objectContaining({ key: old.key }), true));
   resolve(pullInfo()); await sync;
   expect(mocks.data.tabs).toEqual([]); expect(mocks.data.archived).toEqual([]);
 });
@@ -735,16 +739,16 @@ it('still waits for a running checkout before deleting shared Git data', async (
   await vi.waitFor(() => expect(finish).toBeDefined());
   const close = mutateWorkspace({ op: 'close', key: old.key }, 'review');
   await new Promise(resolve => setImmediate(resolve));
-  expect(mocks.discard).not.toHaveBeenCalled(); expect(mocks.data.tabs).toEqual([old]);
+  expect(mocks.discard).not.toHaveBeenCalled(); expect(mocks.data.tabs).toEqual([]);
   finish(); await Promise.all([checkout, close]);
-  expect(mocks.discard).toHaveBeenCalledWith(old); expect(mocks.data.tabs).toEqual([]);
+  await vi.waitFor(() => expect(mocks.discard).toHaveBeenCalledWith(expect.objectContaining({ key: old.key }), true)); expect(mocks.data.tabs).toEqual([]);
 });
 it('removes legacy archived tabs on startup without restoring them on reopening', async () => {
   const old = tab(9); mocks.data.tabs = []; mocks.data.archived = [old];
   const stop = startWorkspace();
   try {
     await vi.waitFor(() => expect(mocks.data.archived).toEqual([]));
-    expect(mocks.discard).toHaveBeenCalledWith(old);
+    await vi.waitFor(() => expect(mocks.discard).toHaveBeenCalledWith(expect.objectContaining({ key: old.key }), true));
     expect(mocks.data.tabs).toEqual([]);
   } finally { stop(); }
 });

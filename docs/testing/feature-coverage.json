@@ -130,26 +130,44 @@
         "tests/unit/workspace/object-cache.test.ts",
         "tests/unit/workspace/lifecycle.test.ts",
         "tests/integration/workspace/discard.test.ts",
-        "tests/integration/workspace/retention.test.ts"
+        "tests/integration/workspace/retention.test.ts",
+        "tests/integration/workspace/permanentClose.test.ts",
+        "tests/integration/workspace/instantClose.test.ts",
+        "tests/unit/client/workspaceState.test.ts"
       ],
       "transitions": [
         "concurrent imports -> shared cache -> provider/user clone removed -> remaining PR source readable",
         "hook-configured checkout -> snapshot import -> no hook-generated files",
         "marked partial deletion -> missing/reinitialized Git metadata -> exact snapshot remainder -> close succeeds",
-        "marked partial deletion -> modified/extra files, staged work or local branches -> preserve workspace",
+        "marked partial deletion -> modified/extra files, staged work or local branches -> conservative disposal preserves workspace",
         "older HEAD + complete imported index -> verify cached tree -> close succeeds",
-        "staged snapshot + unpublished edits/hidden index flags/branches -> close refused",
+        "staged snapshot + unpublished edits/hidden index flags/branches -> explicit close discards owned source",
         "legacy chain -> either closure order -> broken unrelated ref ignored -> remaining source readable",
         "partial alternate rewrite failure -> original retained -> retry -> usable cache graph",
         "last dependency removed -> cache collected -> next import recreates cache",
         "imports pending -> deletion waits -> later import waits -> failure releases fence",
         "unsupported hard link -> copied bytes -> provider removed without data loss",
-        "unsafe symlink path -> refuse mutation and collection -> external data intact"
+        "unsafe symlink path -> refuse mutation and collection -> external data intact",
+        "close -> durable tab removal -> cleanup failure/restart -> remains closed -> background retry succeeds",
+        "close -> stale responses/network failure -> no tab or draft restoration -> explicit reopen starts fresh"
       ]
     },
     "9.7": {
-      "tests": ["tests/integration/workspace/retention.test.ts", "tests/unit/workspace/service.test.ts", "tests/unit/client/reviewSessions.test.ts"],
-      "note": "Real Git cleanup/restoration covers cutoff boundaries, closed/open PRs, active work, local changes, safe agent heads, shared dependencies, path safety and selection races; client/service tests cover lazy recovery without metadata refresh."
+      "tests": [
+        "tests/integration/workspace/retention.test.ts",
+        "tests/unit/workspace/service.test.ts",
+        "tests/unit/client/reviewSessions.test.ts",
+        "tests/integration/workspace/permanentClose.test.ts",
+        "tests/integration/workspace/instantClose.test.ts",
+        "tests/unit/client/workspaceState.test.ts"
+      ],
+      "note": "Real Git cleanup/restoration covers cutoff boundaries, closed/open PRs, active work, local changes, safe agent heads, shared dependencies, path safety and selection races; client/service tests cover lazy recovery without metadata refresh.",
+      "stateful": true,
+      "transitions": [
+        "open tab -> close persisted -> cleanup pending -> cleanup failure/restart -> remains closed",
+        "network failure -> saved close intent -> retry -> tab stays absent",
+        "explicit reopen -> old cleanup completed -> fresh review"
+      ]
     },
     "9.6": {
       "tests": [

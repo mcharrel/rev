@@ -240,21 +240,18 @@ it('clears the last closed review and ignores its late loading response', async 
   expect(window.history.replaceState).toHaveBeenLastCalledWith(null, '', '/');
 });
 
-it.each([false, true])('retains drafts while closing, restores them on failure, and evicts them only after success (last tab: %s)', async last => {
+it.each([false, true])('discards closed drafts immediately and never restores them after a failed close (last tab: %s)', async last => {
   if (last) workspace.value = { tabs: [tab('a')], active: 'a' };
   dispose = initReviewSessions(); await tick();
-  editFormSignal.value = { annotationId: null, formKey: '3:new', content: 'Keep on failure', category: 'bug' };
+  editFormSignal.value = { annotationId: null, formKey: '3:new', content: 'Discard on close', category: 'bug' };
   scroll.value = 'Main draft'; scroll.scrollTop = 42;
   let fail!: (error: Error) => void;
   change.mockImplementationOnce(() => new Promise((_yes, no) => { fail = no; }));
   const close = mutate({ op: 'close', key: 'a' }); await tick();
   expect(reviewStore.state.value.reviewId).toBe(last ? '' : 'b');
-  fail(new Error('Unpublished code')); await close;
-  workspace.value = { ...workspace.value, active: 'a' }; await tick();
-  expect(editFormSignal.value?.content).toBe('Keep on failure');
-  expect(scroll).toEqual({ scrollTop: 42, value: 'Main draft' });
-  change.mockResolvedValueOnce({ tabs: last ? [] : [tab('b')], active: last ? null : 'b' });
-  await mutate({ op: 'close', key: 'a' }); await tick();
+  expect(editFormSignal.value).toBeNull();
+  fail(new Error('Server unavailable')); await close;
+  expect(workspace.value.tabs.some(t => t.key === 'a')).toBe(false);
   workspace.value = { tabs: [tab('a'), ...workspace.value.tabs], active: 'a' }; await tick();
   expect(editFormSignal.value).toBeNull(); expect(scroll.value).toBe('');
 });
