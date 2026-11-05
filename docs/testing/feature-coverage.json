@@ -827,6 +827,16 @@
       ],
       "note": "XSS auto-escape + raw(); kerfjs-only (no react)."
     },
+    "8.10": {
+      "stateful": true,
+      "tests": ["tests/unit/client/descriptionPaste.test.ts"],
+      "transitions": [
+        "selected text -> URL paste -> rendered draft hyperlink",
+        "native insertion succeeds -> one input event; unavailable -> range fallback",
+        "empty selection, non-URL text, files or read-only field -> ordinary paste unchanged"
+      ],
+      "note": "Native undo and the complete edit/preview/save gesture require the manual checks in docs/manual-test-plan.md."
+    },
     "8.9": {
       "tests": [
         "tests/e2e/themes.test.ts",

@@ -16,6 +16,7 @@ import { createCommentNavigator } from './commentNavigation.js';
 import { conversation as conversationHtml } from './conversation.js';
 import { clickedDescriptionText } from './description.js';
 import { descriptionEditOffset, focusDescriptionEditor, previewDescriptionEditor, resizeDescriptionEditor } from './descriptionEditor.js';
+import { pasteDescriptionLink } from './descriptionPaste.js';
 import { startFreshReview } from './freshReview.js';
 import { copyPullLink, pullHeader } from './header.js';
 import { bindDivider } from './resize.js';
@@ -318,6 +319,7 @@ export function initWorkspace(): void {
     const textarea = asTextarea(form.querySelector('textarea'));
     focusDescriptionEditor(textarea, description, offset, click.top, previousScroll);
     textarea.addEventListener('input', () => { resizeDescriptionEditor(textarea); });
+    textarea.addEventListener('paste', (event) => { pasteDescriptionLink(event, textarea); });
     const finish = async (save: boolean) => {
       if (save && !(await mutate({ op: 'edit', key: tab.key, body: textarea.value }))) return;
       descriptionDrafts.delete(tab.key);
