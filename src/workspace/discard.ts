@@ -14,7 +14,7 @@ import { managedPath, safeHead } from './retention.js';
 import { indexMatchesImportedSnapshot, isSnapshotRemainder } from './snapshot-remainder.js';
 import { saveWorkspace, workspaceData } from './storage.js';
 
-async function ownedPath(area: 'workspaces' | 'agents', name: string): Promise<string | null> {
+async function ownedPath(area: 'workspaces' | 'agents' | 'checkout-recovery', name: string): Promise<string | null> {
   const root = await managedPath(area, name);
   if (root !== null) return root;
   const dataDir = getDataDir();
@@ -93,6 +93,10 @@ export async function discardTabData(tab: PullTab, discardLocalChanges = false):
     tab.checkoutEvicted = true;
     saveWorkspace();
     await rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  }
+  if (discardLocalChanges) {
+    const recovery = await ownedPath('checkout-recovery', `${tab.ref.owner}-${tab.ref.repo}-${tab.ref.number}`);
+    if (recovery !== null) await rm(recovery, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   }
   // Cache collection is retryable housekeeping, never a reason to restore a deleted tab.
   await cleanupObjectCaches().catch((error: unknown) => { console.warn(`Git cache cleanup deferred: ${String(error)}`); });

@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
@@ -12,6 +12,7 @@ import { addReviewFile, createReview, updateReviewSource } from '../db/queries.j
 import { parseDiff } from '../git/parseDiff.js';
 import { updateReviewDiffs } from '../review-update.js';
 import { github, githubToken, repoApi } from './github.js';
+import { preserveIncompleteCheckout } from './incomplete-checkout.js';
 import { closingTabs, readGitStorage, withCheckoutLock } from './lifecycle.js';
 import { attachObjectCache, repositoryCache } from './object-cache.js';
 import { findLocalRepository } from './repositories.js';
@@ -89,15 +90,19 @@ async function prepareCheckout(tab: PullTab, restore: boolean, canApply: () => b
   const head = restore ? tab.reviewedHead : info.headRefOid;
   const target = restore ? tab.reviewedBase : info.baseRefOid;
   if (!head || !target) throw new Error('The saved PR revision is unavailable; refresh the PR');
-  const root = join(
-    getDataDir() ??
-      (() => {
-        throw new Error('Storage unavailable');
-      })(),
-    'workspaces',
-    `${tab.ref.owner}-${tab.ref.repo}-${tab.ref.number}`,
-  );
+  const data = getDataDir();
+  if (data === null) throw new Error('Storage unavailable');
+  const name = `${tab.ref.owner}-${tab.ref.repo}-${tab.ref.number}`;
+  const root = join(data, 'workspaces', name);
   await mkdir(root, { recursive: true });
+  const owned = join(await realpath(data), 'workspaces', name);
+  const gitDir = await lstat(join(root, '.git')).catch((error: unknown) => {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (!(await lstat(root)).isDirectory() || await realpath(root) !== owned
+    || (gitDir && (!gitDir.isDirectory() || await realpath(join(root, '.git')) !== join(owned, '.git'))))
+    throw new Error('Review source must use an app-owned checkout');
   await gitAsync(['init', '--quiet'], root);
   const exclude = join(root, '.git', 'info', 'exclude');
   if (!(await readFile(exclude, 'utf8')).split('\n').includes('/.glassbox/'))
@@ -133,7 +138,12 @@ async function prepareCheckout(tab: PullTab, restore: boolean, canApply: () => b
   const lines = [...new Set(boundaries.flatMap(value => value.split('\n').filter(Boolean)))];
   if (lines.length) await writeFile(shallow, `${lines.join('\n')}\n`);
   const dirty = await gitAsync(['status', '--porcelain'], root);
-  if (dirty.trim()) throw new Error('The managed checkout has local changes; they were preserved.');
+  if (dirty.trim()) {
+    if (closingTabs.has(tab) || !canApply()) return;
+    // A failed first checkout can leave source files without HEAD/index; preserve them before retrying.
+    if (await preserveIncompleteCheckout(root, data) !== null) return prepareCheckout(tab, restore, canApply);
+    throw new Error('The managed checkout has local changes; they were preserved.');
+  }
   if (restore) {
     await gitAsync(['checkout', '--detach', head], root);
     tab.repoRoot = root;

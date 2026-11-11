@@ -19,7 +19,7 @@ function idle(tab: PullTab, cutoff: number): boolean {
     && !data.outbox.some(item => item.tab === tab.key);
 }
 
-export async function managedPath(area: 'workspaces' | 'agents', name: string): Promise<string | null> {
+export async function managedPath(area: 'workspaces' | 'agents' | 'checkout-recovery', name: string): Promise<string | null> {
   const dataDir = getDataDir();
   if (dataDir === null || name !== name.replaceAll(/[\\/]/g, '') || name === '.' || name === '..') return null;
   const root = join(dataDir, area, name);

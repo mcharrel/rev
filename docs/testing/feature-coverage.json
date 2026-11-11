@@ -127,6 +127,8 @@
       "tests": [
         "tests/unit/workspace/snapshot-remainder.test.ts",
         "tests/unit/workspace/checkout.test.ts",
+        "tests/unit/workspace/incomplete-checkout.test.ts",
+        "tests/integration/workspace/incompleteCheckout.test.ts",
         "tests/unit/workspace/object-cache.test.ts",
         "tests/unit/workspace/lifecycle.test.ts",
         "tests/integration/workspace/discard.test.ts",
@@ -137,6 +139,8 @@
       ],
       "transitions": [
         "concurrent imports -> shared cache -> provider/user clone removed -> remaining PR source readable",
+        "incomplete initial checkout -> preserve source -> retry -> usable review -> repeated refresh -> no extra backup",
+        "staged or established local work -> refresh preserves original -> explicit close removes checkout and recovery",
         "hook-configured checkout -> snapshot import -> no hook-generated files",
         "marked partial deletion -> missing/reinitialized Git metadata -> exact snapshot remainder -> close succeeds",
         "marked partial deletion -> modified/extra files, staged work or local branches -> conservative disposal preserves workspace",
