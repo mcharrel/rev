@@ -159,14 +159,16 @@
         "tests/unit/client/reviewSessions.test.ts",
         "tests/integration/workspace/permanentClose.test.ts",
         "tests/integration/workspace/instantClose.test.ts",
-        "tests/unit/client/workspaceState.test.ts"
+        "tests/unit/client/workspaceState.test.ts",
+        "tests/integration/workspace/openWhileLoading.test.ts"
       ],
       "note": "Real Git cleanup/restoration covers cutoff boundaries, closed/open PRs, active work, local changes, safe agent heads, shared dependencies, path safety and selection races; client/service tests cover lazy recovery without metadata refresh.",
       "stateful": true,
       "transitions": [
         "open tab -> close persisted -> cleanup pending -> cleanup failure/restart -> remains closed",
         "network failure -> saved close intent -> retry -> tab stays absent",
-        "explicit reopen -> old cleanup completed -> fresh review"
+        "explicit reopen -> fresh pending tab -> old cleanup completed -> fresh source",
+        "first PR importing -> incoming link opens/selects second immediately -> older completion cannot replace it"
       ]
     },
     "9.6": {
@@ -861,14 +863,17 @@
         "tests/unit/client/workspaceHeader.test.ts",
         "tests/unit/client/workspaceState.test.ts",
         "tests/unit/workspace/service.test.ts",
-        "tests/integration/workspace/closeWhileReacting.test.ts"
+        "tests/integration/workspace/closeWhileReacting.test.ts",
+        "tests/integration/workspace/openWhileLoading.test.ts",
+        "tests/unit/client/reviewSessions.test.ts"
       ],
-      "note": "light/dark scheme via theme system. (800x500 min-window is CSS-only sub-gap). PR-tab closing progress and safe asynchronous deletion; visual spinner checks are manual.",
+      "note": "Theme behavior, per-tab navigation and independent loading/cleanup. Real CLI/HTTP covers incoming links while another checkout is blocked; client tests cover drafts and stale responses. Native link activation and CSS layout remain manual.",
       "stateful": true,
       "transitions": [
         "approve -> pending Slack -> switch tab -> close without waiting for remote reads",
-        "close -> cleanup error -> progress cleared -> retry",
-        "close -> reopen -> old response -> new refresh remains tracked"
+        "close -> cleanup error -> remains closed -> background retry",
+        "close -> reopen -> old response -> new refresh remains tracked",
+        "first PR importing -> incoming link opens/selects second immediately -> older completion cannot replace it"
       ]
     },
     "4.1": {

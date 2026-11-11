@@ -170,7 +170,12 @@ async function performSync(tab: PullTab, mode: Exclude<SyncMode, 'auto'>): Promi
           mode !== 'background' && (tab.reviewId === null || tab.checkoutEvicted ||
           ((mode === 'refresh' || tab.importLocalComments) &&
             (tab.reviewedHead !== info.headRefOid || tab.reviewedBase !== info.baseRefOid)))
-        ) await importPull(tab);
+        ) {
+          // Open/select immediately; only source reuse must wait for an old checkout's cleanup.
+          await finishDeletion(tab.key);
+          if (closingTabs.has(tab) || !workspaceData().tabs.includes(tab)) return;
+          await importPull(tab);
+        }
         if (refreshRequest === tab.sourceRefreshRequested && tab.reviewedHead === info.headRefOid)
           delete tab.sourceRefreshRequested;
         saveWorkspace();
@@ -586,9 +591,8 @@ export async function mutateWorkspace(input: WorkspaceMutation, currentReviewId:
   const data = workspaceData();
   if (input.op === 'open') {
     const ref = parsePullUrl(input.url);
-    await finishDeletion(pullKey(ref));
     const archived = data.archived.find(t => t.key === pullKey(ref));
-    if (archived) { discardTab(archived); await finishDeletion(archived.key); }
+    if (archived) discardTab(archived);
     let tab = data.tabs.find((t) => t.key === pullKey(ref));
     if (!tab) {
       tab = PullTabSchema.parse({

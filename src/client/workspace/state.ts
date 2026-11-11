@@ -30,9 +30,10 @@ export function retainedTabs(): PullTab[] { return workspace.value.tabs; }
 let mutationVersion = 0;
 let closeVersion = 0;
 function receive(state: Workspace, preserveSelection: boolean): void {
-  workspaceLoaded.value = true;
   const local = workspace.value;
-  const openedExternally = (state.externalSelection ?? 0) !== (local.externalSelection ?? 0);
+  if ((state.externalSelection ?? 0) < (local.externalSelection ?? 0)) return;
+  workspaceLoaded.value = true;
+  const openedExternally = (state.externalSelection ?? 0) > (local.externalSelection ?? 0);
   if (openedExternally) {
     addingPull.value = false;
     if (state.active !== null && !pendingCloses().includes(state.active)) forgetClose(state.active);
@@ -58,8 +59,10 @@ export async function refreshWorkspace(preserveSelection = true): Promise<void> 
   }
   const state = await getWorkspace();
   if (version !== mutationVersion || closed !== closeVersion) return;
-  // Keep editors intact while background synchronization continues on the server.
-  if (preserveSelection && (
+  // External links are navigation, not background refresh; per-tab sessions preserve their drafts.
+  const externalOpen = (state.externalSelection ?? 0) > (workspace.value.externalSelection ?? 0)
+    && (state.active !== workspace.value.active || addingPull.value);
+  if (preserveSelection && !externalOpen && (
     document.querySelector(
       '.pr-tab.dragging, .pr-title-input, .request-changes-form, .pr-description-editor',
     ) !== null ||

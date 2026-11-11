@@ -200,3 +200,31 @@ it('accepts a newly opened PR even when its request straddles a completed close'
   await vi.waitFor(() => expect(workspace.value.active).toBe('a'));
   expect(workspace.value.tabs.find(t => t.key === 'a')?.reviewId).toBe('new-a');
 });
+
+
+it.each(['description', 'comment'])('accepts an external PR link during loading without being blocked by a %s draft', async kind => {
+  workspace.value.tabs[0].loading = true;
+  vi.stubGlobal('document', { querySelector: () => kind === 'description' ? {} : null,
+    querySelectorAll: () => kind === 'comment' ? [{ value: 'Unsent comment', disabled: false }] : [] });
+  remote.get.mockResolvedValue({ ...structuredClone(workspace.value), active: 'b', externalSelection: 1 });
+  await refreshWorkspace();
+  expect(workspace.value.active).toBe('b');
+  expect(workspace.value.tabs[0].loading).toBe(true);
+});
+it('keeps ordinary background refresh from disturbing an editor', async () => {
+  vi.stubGlobal('document', { querySelector: () => ({}), querySelectorAll: () => [] });
+  remote.get.mockResolvedValue({ ...structuredClone(workspace.value), active: 'b' });
+  await refreshWorkspace();
+  expect(workspace.value.active).toBe('a');
+});
+it('ignores an older external selection response arriving after a newer link', async () => {
+  const old = deferred<typeof workspace.value>();
+  remote.get.mockReturnValueOnce(old.promise);
+  const refresh = refreshWorkspace();
+  remote.get.mockResolvedValueOnce({ ...structuredClone(workspace.value), active: 'b', externalSelection: 2 });
+  await refreshWorkspace();
+  old.resolve({ ...structuredClone(workspace.value), active: 'a', externalSelection: 1 });
+  await refresh;
+  expect(workspace.value.active).toBe('b');
+  expect(workspace.value.externalSelection).toBe(2);
+});

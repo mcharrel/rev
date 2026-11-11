@@ -11,7 +11,8 @@ vi.mock('../../../src/client/diff/index.js', () => ({ invalidateDiffCache: vi.fn
 vi.mock('../../../src/client/toast.js', () => ({ showToast: vi.fn() }));
 vi.stubGlobal('document', { body: { dataset: { reviewId: 'a' } } });
 const { reviewStore, aiStore, diffViewStore, editFormSignal } = await import('../../../src/client/stores/index.js');
-const { workspace, reviewLoadState, reviewRetry, activeReviewReady, mutate } = await import('../../../src/client/workspace/state.js');
+const { workspace, reviewLoadState, reviewRetry, activeReviewReady, mutate, refreshWorkspace } = await import('../../../src/client/workspace/state.js');
+const { closedTabs } = await import('../../../src/client/workspace/closedTabs.js');
 const { initReviewSessions } = await import('../../../src/client/workspace/reviewSessions.js');
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 const file = (id: string) => ({ id, file_path: `${id}.ts`, review_id: id[0], status: 'reviewed', diff_data: null, created_at: '' });
@@ -20,6 +21,7 @@ const tab = (id: string) => PullTabSchema.parse({ key: id, reviewId: id, reviewe
 let dispose: (() => void) | undefined;
 let scroll: { scrollTop: number; value: string };
 beforeEach(() => {
+  closedTabs.value = new Set();
   vi.mocked(invalidateDiffCache).mockClear();
   reviewLoadState.value = { key: '', status: 'loading', error: null };
   scroll = { scrollTop: 0, value: '' };
@@ -254,4 +256,22 @@ it.each([false, true])('discards closed drafts immediately and never restores th
   expect(workspace.value.tabs.some(t => t.key === 'a')).toBe(false);
   workspace.value = { tabs: [tab('a'), ...workspace.value.tabs], active: 'a' }; await tick();
   expect(editFormSignal.value).toBeNull(); expect(scroll.value).toBe('');
+});
+
+
+it('preserves code and Main drafts when an external link selects a still-loading PR', async () => {
+  dispose = initReviewSessions(); await tick();
+  editFormSignal.value = { annotationId: null, formKey: '3:new', content: 'Unsent code reply', category: 'bug' };
+  scroll.value = 'Unsent Main comment'; scroll.scrollTop = 42;
+  const server = { tabs: [tab('a'), { ...tab('b'), reviewId: null, loading: true }], active: 'b', externalSelection: 1 };
+  api.mockImplementationOnce(async () => server);
+  await refreshWorkspace(); await tick();
+  expect(workspace.value.active).toBe('b');
+  expect(activeReviewReady()).toBe(false);
+  expect(reviewStore.state.value.files).toEqual([]);
+  expect(editFormSignal.value).toBeNull(); expect(scroll.value).toBe('');
+  workspace.value = { ...workspace.value, active: 'a' }; await tick();
+  expect(editFormSignal.value?.content).toBe('Unsent code reply');
+  expect(scroll.value).toBe('Unsent Main comment');
+  expect(scroll.scrollTop).toBe(42);
 });

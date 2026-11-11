@@ -102,7 +102,7 @@ The personal fork adds a PR tab rail, a Main view with description/reviewers/che
 
 The personal workspace retains loaded reviews and rendered files in memory across PR tab switches, without page navigation or refetching unchanged data. Divider preferences survive both switches and hidden sections; header resizing respects the full content height. GUIDE and LEARN share one scroll area without an internal divider.
 
-Closing a PR tab shows immediate progress in its Close button and prevents duplicate requests for that tab; other tabs remain usable. Deletion waits for source operations and safe local cleanup, never remote metadata/comment reads or Slack reactions. Late reads cannot restore a deleted tab or disrupt a fresh reopening. Cleanup failures keep the tab visible and allow retry.
+Closing a PR tab removes it immediately and permanently; other tabs remain usable. Background cleanup waits for source operations, never remote metadata/comment reads or Slack reactions, and retries failures without restoring the tab. Late reads cannot restore a deleted tab or disrupt a fresh reopening.
 
 The compact PR rail's minimum follows the rendered ID text plus small padding, without a hashtag or status dot. A second Cmd/Ctrl+F returns focus to the file without closing search or resetting the match. A pending PR import clears the previous session and hides file content, file names, and guidance until the selected PR's own file list loads; an explicit indicator is shown in File view. Cold file loads also replace the previous diff with an indicator. Failed file lists offer Retry without discarding other cached PR sessions.
 
@@ -142,7 +142,9 @@ Explicit PR refreshes show a small spinner immediately left of Share in the titl
 
 Own PRs offer Merge in the status dropdown, disabled for drafts and closed PRs. Show per-PR Merging… progress, suppress duplicate requests and switch to green Merged only after GitHub accepts the merge. Recheck the authenticated author, current state and merge readiness; require the displayed/reviewed head SHA so a newer push cannot be merged silently. Prefer a merge commit when enabled, otherwise squash, then rebase. Errors keep the prior state, and merge actions never trigger Slack review reactions. Older metadata responses cannot overwrite a confirmed merge.
 
-Closing a PR immediately removes its tab and selects another open PR (or the add-PR screen). Safe source checks and permanent deletion continue in the background without blocking navigation or reordering. Pending closes stay hidden through polls and other responses; completed deletion invalidates older snapshots. Retain only temporary rollback state and drafts until cleanup finishes. On failure, restore that tab with an error without stealing focus; on success, release all cached review data. Never bypass unpublished-source checks or archive closed tabs.
+Closing a PR immediately removes its tab and selects another open PR (or the add-PR screen). Safe source checks and permanent deletion continue in the background without blocking navigation or reordering. Pending closes stay hidden through polls and other responses; completed deletion invalidates older snapshots. Discard cached review data and drafts immediately. Cleanup failures retry separately without restoring the tab. Explicit Close discards unpublished state only in app-owned checkouts; preserve user clones and shared dependencies, and never archive closed tabs.
+
+Opening an external PR link selects its tab without waiting for other PR imports or cleanup. A fresh or reopened PR shows its own loading state while source is pending; never show another PR’s files. External navigation bypasses the background-refresh editor guard and preserves per-tab code/Main comment drafts and description editor state. Older external-selection responses cannot override newer links. Ordinary background polls still protect active editors.
 
 ### 8.10 Description URL paste
 
