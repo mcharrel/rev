@@ -125,6 +125,7 @@
     "9.8": {
       "stateful": true,
       "tests": [
+        "tests/unit/workspace/snapshot.test.ts",
         "tests/unit/workspace/snapshot-remainder.test.ts",
         "tests/unit/workspace/checkout.test.ts",
         "tests/unit/workspace/incomplete-checkout.test.ts",
@@ -138,6 +139,7 @@
         "tests/unit/client/workspaceState.test.ts"
       ],
       "transitions": [
+        "cold PR -> fetch trees and changed blobs only -> sparse source -> refresh/restore -> full changed-file context",
         "concurrent imports -> shared cache -> provider/user clone removed -> remaining PR source readable",
         "incomplete initial checkout -> preserve source -> retry -> usable review -> repeated refresh -> no extra backup",
         "staged or established local work -> refresh preserves original -> explicit close removes checkout and recovery",
@@ -834,7 +836,9 @@
         "tests/unit/client/commentAnchor.test.ts",
         "tests/unit/components/diffView.test.ts",
         "tests/unit/client/findFocus.test.ts",
-        "tests/unit/client/appZoom.test.ts"
+        "tests/unit/client/appZoom.test.ts",
+        "tests/unit/desktop-link-permissions.test.ts",
+        "tests/unit/client/tauri-open-external.test.ts"
       ],
       "note": "Escape closes forms/modals; j/k; Cmd/Ctrl+F find bar; bounded Tab/Shift+Tab change navigation with edit/dialog exceptions; viewport-based c/v thread navigation with ten source lines of context and cross-file mount guards. Native whole-app zoom steps, persistence, bounds, reset and duplicate menu/key delivery are covered."
     },
@@ -1275,7 +1279,9 @@
       "waived": "Tauri native-window wrap + window title + macOS Dock .app identity — desktop shell behavior in src-tauri; verified by manual/CI build.",
       "note": "desktop. Client zoom dispatch uses the native command; desktop build verifies the command registration and ACL.",
       "tests": [
-        "tests/unit/client/appZoom.test.ts"
+        "tests/unit/client/appZoom.test.ts",
+        "tests/unit/desktop-link-permissions.test.ts",
+        "tests/unit/client/tauri-open-external.test.ts"
       ]
     },
     "10.2": {

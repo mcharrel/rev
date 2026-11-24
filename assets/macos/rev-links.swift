@@ -84,9 +84,11 @@ func configure(_ on: Bool) {
     preferences.synchronize()
     status(failure)
 }
-func openInBrowser(_ url: URL) {
-    guard ["http", "https"].contains(url.scheme?.lowercased() ?? ""), let app = browser(url.scheme!.lowercased()) else { return }
-    workspace.open([url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+func openInBrowser(_ url: URL, completion: ((Bool) -> Void)? = nil) {
+    guard ["http", "https"].contains(url.scheme?.lowercased() ?? ""), let app = browser(url.scheme!.lowercased()) else { completion?(false); return }
+    workspace.open([url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration()) { application, error in
+        completion?(application != nil && error == nil)
+    }
 }
 func openPull(_ url: URL) {
     let process = Process()
@@ -133,9 +135,11 @@ if args.first == "--auto-enable" {
     exit(0)
 }
 if args.first == "--browser", args.count == 2, let url = URL(string: args[1]) {
-    openInBrowser(url)
-    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.5))
-    exit(0)
+    var opened: Bool? = nil
+    openInBrowser(url) { opened = $0 }
+    let deadline = Date(timeIntervalSinceNow: 10)
+    while opened == nil && Date() < deadline { RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05)) }
+    exit(opened == true ? 0 : 1)
 }
 class Delegate: NSObject, NSApplicationDelegate {
     let queue = DispatchQueue(label: "rev.links")

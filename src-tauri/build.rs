@@ -26,6 +26,9 @@ fn main() {
             "install_update",
             "pick_plugin_folder",
             "set_app_zoom",
+            "get_pr_link_routing",
+            "set_pr_link_routing",
+            "open_link_in_browser",
         ]),
     ))
     .expect("failed to run tauri-build");

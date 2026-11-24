@@ -405,6 +405,12 @@
           "markdownDescription": "Enables the get_pending_update command without any pre-configured scope."
         },
         {
+          "description": "Enables the get_pr_link_routing command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-pr-link-routing",
+          "markdownDescription": "Enables the get_pr_link_routing command without any pre-configured scope."
+        },
+        {
           "description": "Enables the install_cli command without any pre-configured scope.",
           "type": "string",
           "const": "allow-install-cli",
@@ -417,6 +423,12 @@
           "markdownDescription": "Enables the install_update command without any pre-configured scope."
         },
         {
+          "description": "Enables the open_link_in_browser command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-link-in-browser",
+          "markdownDescription": "Enables the open_link_in_browser command without any pre-configured scope."
+        },
+        {
           "description": "Enables the pick_plugin_folder command without any pre-configured scope.",
           "type": "string",
           "const": "allow-pick-plugin-folder",
@@ -427,6 +439,12 @@
           "type": "string",
           "const": "allow-set-app-zoom",
           "markdownDescription": "Enables the set_app_zoom command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_pr_link_routing command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-pr-link-routing",
+          "markdownDescription": "Enables the set_pr_link_routing command without any pre-configured scope."
         },
         {
           "description": "Denies the check_cli_installed command without any pre-configured scope.",
@@ -447,6 +465,12 @@
           "markdownDescription": "Denies the get_pending_update command without any pre-configured scope."
         },
         {
+          "description": "Denies the get_pr_link_routing command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-pr-link-routing",
+          "markdownDescription": "Denies the get_pr_link_routing command without any pre-configured scope."
+        },
+        {
           "description": "Denies the install_cli command without any pre-configured scope.",
           "type": "string",
           "const": "deny-install-cli",
@@ -459,6 +483,12 @@
           "markdownDescription": "Denies the install_update command without any pre-configured scope."
         },
         {
+          "description": "Denies the open_link_in_browser command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-link-in-browser",
+          "markdownDescription": "Denies the open_link_in_browser command without any pre-configured scope."
+        },
+        {
           "description": "Denies the pick_plugin_folder command without any pre-configured scope.",
           "type": "string",
           "const": "deny-pick-plugin-folder",
@@ -469,6 +499,12 @@
           "type": "string",
           "const": "deny-set-app-zoom",
           "markdownDescription": "Denies the set_app_zoom command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_pr_link_routing command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-pr-link-routing",
+          "markdownDescription": "Denies the set_pr_link_routing command without any pre-configured scope."
         },
         {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",

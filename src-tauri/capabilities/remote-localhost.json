@@ -13,6 +13,9 @@
     "allow-check-for-update",
     "allow-install-update",
     "allow-pick-plugin-folder",
-    "allow-set-app-zoom"
+    "allow-set-app-zoom",
+    "allow-get-pr-link-routing",
+    "allow-set-pr-link-routing",
+    "allow-open-link-in-browser"
   ]
 }

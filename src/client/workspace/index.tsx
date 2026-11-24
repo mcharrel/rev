@@ -468,8 +468,9 @@ export function initWorkspace(): void {
   void delegate(
     document.body,
     'click',
-    '.pr-repo-link, .pr-reviewer a, .pr-check a, .pr-description a, .pr-message a',
+    'a[href]',
     (event, element) => {
+      if (event.defaultPrevented) return;
       const url = element.getAttribute('href');
       if (url !== null && openExternalUrl(url)) event.preventDefault();
     },

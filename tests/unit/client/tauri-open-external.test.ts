@@ -23,7 +23,8 @@ vi.mock('../../../src/client/toast.js', () => ({ showToast: showToastMock }));
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
 const openExternalMock = vi.fn<(req: { url: string }) => Promise<{ ok: true }>>();
-vi.mock('../../../src/api/system.js', () => ({
+vi.mock('../../../src/api/system.js', async original => ({
+  ...await original<typeof import('../../../src/api/system.js')>(),
   openExternal: (req: { url: string }) => openExternalMock(req),
 }));
 
@@ -36,6 +37,11 @@ afterEach(() => {
 });
 
 describe('openExternalUrl (GB-808)', () => {
+  it.each(['/history', '#section', 'javascript:alert(1)', 'file:///tmp/source'])('keeps internal/unsupported links out of the native opener (%s)', url => {
+    vi.stubGlobal('window', { __TAURI__: {} });
+    expect(openExternalUrl(url)).toBe(false);
+    expect(openExternalMock).not.toHaveBeenCalled();
+  });
   it('returns false and does not dispatch when not running inside Tauri (no window)', () => {
     // Node test env: `window` is undefined. The helper must treat this as
     // "plain browser" rather than throwing a ReferenceError.

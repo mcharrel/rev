@@ -12,6 +12,7 @@ import { parseOutline } from '../../outline/parser.js';
 import type { AppEnv } from '../../types.js';
 import { errorResponse, requirePathParam } from '../../utils/parseBody.js';
 import { resolveReviewId } from '../../utils/resolveReviewId.js';
+import { readWorkspaceSource, sourceRepository } from '../../workspace/source-file.js';
 
 export const outlineRoutes = new Hono<AppEnv>();
 
@@ -82,6 +83,7 @@ outlineRoutes.get('/symbol-definition', async (c) => {
     try {
       const allFiles = spawnSync('git', ['ls-files'], { cwd: repoRoot, encoding: 'utf-8', maxBuffer: 32 * 1024 * 1024 })
         .stdout.trim().split('\n').filter(Boolean);
+      const source = await sourceRepository(repoRoot);
       let scanned = 0;
       for (const filePath of allFiles) {
         if (searchedPaths.has(filePath)) continue;
@@ -95,13 +97,27 @@ outlineRoutes.get('/symbol-definition', async (c) => {
         }
 
         let content = '';
+        let candidate = false;
         try {
           content = readFileSync(resolve(repoRoot, filePath), 'utf-8');
-        } catch { continue; }
+        } catch {
+          if (source === undefined) continue;
+          try { content = readFileSync(resolve(source, filePath), 'utf-8'); candidate = true; }
+          catch { continue; }
+        }
         scanned++;
         if (!content) continue;
 
-        const symbols = parseOutline(content, filePath);
+        let symbols = parseOutline(content, filePath);
+        // A user clone is only a hint: confirm the definition against this PR's saved revision.
+        if (candidate) {
+          const matches: SymbolDef[] = [];
+          collectDefinitions(symbols, name, null, filePath, matches);
+          if (matches.length === 0) continue;
+          const saved = await readWorkspaceSource(repoRoot, filePath);
+          if (saved === null) continue;
+          symbols = parseOutline(saved, filePath);
+        }
         collectDefinitions(symbols, name, null, filePath, definitions);
         // Stop after finding first match in repo scan (perf)
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- array mutated by collectDefinitions

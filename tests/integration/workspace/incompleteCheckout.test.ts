@@ -23,6 +23,8 @@ vi.mock('../../../src/workspace/github.js', async original => ({
 vi.mock('../../../src/workspace/deployments.js', () => ({ refreshDeployment: vi.fn(), cancelDeployment: vi.fn() }));
 vi.mock('../../../src/workspace/notifications.js', () => ({ notify: vi.fn() }));
 import { getReviewFiles } from '../../../src/db/queries.js';
+import { outlineRoutes } from '../../../src/routes/api/outline.js';
+import { pageRoutes } from '../../../src/routes/pages.js';
 import { finishDeletion } from '../../../src/workspace/deletion.js';
 import { workspaceRoutes } from '../../../src/workspace/routes.js';
 
@@ -38,9 +40,11 @@ beforeEach(() => {
   mocks.root = realpathSync(mkdtempSync(join(tmpdir(), 'rev-retry-checkout-')));
   mocks.data = { tabs: [], archived: [], active: null, outbox: [] };
   mocks.source = join(mocks.root, 'user-clone'); mkdirSync(mocks.source); git(mocks.source, 'init', '-q');
+  git(mocks.source, 'config', 'uploadpack.allowFilter', 'true');
 });
 afterEach(() => { rmSync(mocks.root, { recursive: true, force: true }); });
 it.each(['partial', 'unknown', 'staged'])('refreshes an incomplete %s snapshot without losing local data', async kind => {
+  writeFileSync(join(mocks.source, 'unrelated.ts'), 'export function helper() { return 1; }\n');
   writeFileSync(join(mocks.source, 'file.ts'), 'before\n'); const base = commit(mocks.source);
   writeFileSync(join(mocks.source, 'file.ts'), 'after\n');
   writeFileSync(join(mocks.source, 'second.ts'), 'second\n'); const head = commit(mocks.source);
@@ -52,7 +56,9 @@ it.each(['partial', 'unknown', 'staged'])('refreshes an incomplete %s snapshot w
   const tab = PullTabSchema.parse({ key: 'example/project#1', ref: { owner: 'example', repo: 'project', number: 1, url: '' },
     reviewId: null, repoRoot: null, viewer: 'alice', info, error: 'The managed checkout has local changes; they were preserved.' });
   mocks.data.tabs = [tab]; mocks.data.active = tab.key; mocks.load.mockResolvedValue(info);
-  const app = new Hono<AppEnv>().use('*', async (c, next) => { c.set('reviewId', 'launch'); await next(); }).route('/workspace', workspaceRoutes);
+  const app = new Hono<AppEnv>().use('*', async (c, next) => {
+    c.set('reviewId', tab.reviewId ?? 'launch'); c.set('repoRoot', tab.repoRoot ?? root); await next();
+  }).route('/workspace', workspaceRoutes).route('/api', outlineRoutes).route('/', pageRoutes);
   const refresh = () => app.request('/workspace', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'refresh', key: tab.key }) });
   expect((await refresh()).status).toBe(200);
   if (kind === 'staged') {
@@ -64,6 +70,14 @@ it.each(['partial', 'unknown', 'staged'])('refreshes an incomplete %s snapshot w
   expect(git(root, 'rev-parse', 'HEAD')).toBe(head); expect(git(root, 'status', '--porcelain')).toBe('');
   expect(readFileSync(join(root, 'file.ts'), 'utf8')).toBe('after\n');
   expect((await getReviewFiles(tab.reviewId!)).map(f => f.file_path).sort()).toEqual(['file.ts', 'second.ts']);
+  expect(existsSync(join(root, 'unrelated.ts'))).toBe(false);
+  // Repository navigation still reads the exact review revision, even if the user clone has local edits.
+  writeFileSync(join(mocks.source, 'unrelated.ts'), 'export function helper() { return 999; }\n');
+  const definition = await app.request('/api/symbol-definition?name=helper');
+  expect((await definition.json()).definitions).toEqual([expect.objectContaining({ filePath: 'unrelated.ts', name: 'helper' })]);
+  const raw = await app.request('/file-raw?path=unrelated.ts');
+  expect(raw.status).toBe(200); expect(await raw.text()).toContain('return 1;');
+  expect(existsSync(join(root, 'unrelated.ts'))).toBe(false);
   const recovery = join(mocks.root, 'checkout-recovery', 'example-project-1'); const backups = readdirSync(recovery);
   expect(backups).toHaveLength(1);
   expect(readFileSync(join(recovery, backups[0], 'file.ts'), 'utf8')).toBe('');

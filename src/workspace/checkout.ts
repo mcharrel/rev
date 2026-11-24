@@ -1,7 +1,6 @@
 import { execFile } from 'node:child_process';
 import { appendFile, lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 
 import { z } from 'zod';
@@ -16,6 +15,7 @@ import { preserveIncompleteCheckout } from './incomplete-checkout.js';
 import { closingTabs, readGitStorage, withCheckoutLock } from './lifecycle.js';
 import { attachObjectCache, repositoryCache } from './object-cache.js';
 import { findLocalRepository } from './repositories.js';
+import { loadSnapshotObjects, sparseSnapshot } from './snapshot.js';
 import { saveWorkspace } from './storage.js';
 
 const exec = promisify(execFile);
@@ -26,13 +26,15 @@ export async function gitAuthEnv(tab: Pick<PullTab, 'ref'>): Promise<NodeJS.Proc
     GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
     GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString('base64')}` };
 }
-export async function gitAsync(args: string[], cwd: string, env?: NodeJS.ProcessEnv): Promise<string> {
+export async function gitAsync(args: string[], cwd: string, env?: NodeJS.ProcessEnv, input?: string): Promise<string> {
   const run = async () => {
     try {
       // Review snapshots must not run user/repository hooks that generate files or background jobs.
-      const { stdout } = await exec('git', ['-c', 'core.hooksPath=/dev/null', ...args], {
-        cwd, env: env ?? process.env, timeout: 180000, maxBuffer: 64 * 1024 * 1024,
+      const command = exec('git', ['-c', 'core.hooksPath=/dev/null', ...args], {
+        cwd, env: { ...env ?? process.env, GIT_NO_LAZY_FETCH: '1' }, timeout: 180000, maxBuffer: 64 * 1024 * 1024,
       });
+      command.child.stdin?.end(input);
+      const { stdout } = await command;
       return stdout;
     } catch (error) {
       if (error instanceof Error && 'killed' in error && error.killed === true)
@@ -115,19 +117,7 @@ async function prepareCheckout(tab: PullTab, restore: boolean, canApply: () => b
       : await gitAsync(['merge-base', target, head], source).then(value => value.trim(), () => remoteMergeBase(tab));
   }
   const cache = await repositoryCache(tab.ref);
-  const commits = [...new Set([base, head])];
-  const missing = async () => (await Promise.all(commits.map(async sha =>
-    await gitAsync(['cat-file', '-e', `${sha}^{commit}`], cache).then(() => null, () => sha)))).filter(sha => sha !== null);
-  let needed = await missing();
-  if (needed.length && source !== undefined) {
-    // file:// honors depth=1 and copies snapshots instead of borrowing the user's object store.
-    await gitAsync(['fetch', '--no-tags', '--depth=1', pathToFileURL(source).href,
-      ...needed.map(sha => `${sha}:refs/glassbox/cache/${sha}`)], cache).catch(() => {});
-    needed = await missing();
-  }
-  if (needed.length) await gitAsync(['fetch', '--no-tags', '--depth=1',
-    `https://github.com/${tab.ref.owner}/${tab.ref.repo}.git`,
-    ...needed.map(sha => `${sha}:refs/glassbox/cache/${sha}`)], cache, await gitAuthEnv(tab));
+  await loadSnapshotObjects(tab, cache, [base, head], source);
   await attachObjectCache(root, cache);
   // Retain older boundaries too: a refreshed checkout may still contain its previous snapshot.
   const shallow = join(root, '.git', 'shallow');
@@ -144,6 +134,8 @@ async function prepareCheckout(tab: PullTab, restore: boolean, canApply: () => b
     if (await preserveIncompleteCheckout(root, data) !== null) return prepareCheckout(tab, restore, canApply);
     throw new Error('The managed checkout has local changes; they were preserved.');
   }
+  if (closingTabs.has(tab) || !canApply()) return;
+  await sparseSnapshot(tab, root, cache, base, head, source);
   if (restore) {
     await gitAsync(['checkout', '--detach', head], root);
     tab.repoRoot = root;

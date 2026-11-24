@@ -1,6 +1,6 @@
 import { delegate } from 'kerfjs';
 
-import { openExternal } from '../api/system.js';
+import { openExternal, OpenExternalReqSchema } from '../api/system.js';
 import { asButton } from './dom.js';
 import { showToast } from './toast.js';
 
@@ -39,6 +39,7 @@ export function getTauriInvoke(): ((cmd: string, args?: Record<string, unknown>)
  *  should be left alone. */
 export function openExternalUrl(url: string): boolean {
   if (getTauriGlobal() === undefined) return false;
+  if (!OpenExternalReqSchema.safeParse({ url }).success) return false;
   const invoke = getTauriInvoke();
   // Explicit GitHub/browser links inside rev bypass the system PR router.
   if (invoke && /^https?:\/\//i.test(url)) {

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-pr-link-routing"
+description = "Enables the get_pr_link_routing command without any pre-configured scope."
+commands.allow = ["get_pr_link_routing"]
+
+[[permission]]
+identifier = "deny-get-pr-link-routing"
+description = "Denies the get_pr_link_routing command without any pre-configured scope."
+commands.deny = ["get_pr_link_routing"]

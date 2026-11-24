@@ -26,6 +26,7 @@ import { resolveNoteOrigins } from '../review-notes/origin.js';
 import { reanchorReviewNotes } from '../review-notes/reanchor.js';
 import { loadReviewNotesForFile, notedSourcesInFiles } from '../review-notes/store.js';
 import type { AppEnv } from '../types.js';
+import { readWorkspaceSource } from '../workspace/source-file.js';
 
 export const pageRoutes = new Hono<AppEnv>();
 
@@ -206,7 +207,7 @@ pageRoutes.get('/file/:fileId', async (c) => {
 });
 
 // View a raw repo file (not in the diff) — used by go-to-definition for non-diff files
-pageRoutes.get('/file-raw', (c) => {
+pageRoutes.get('/file-raw', async (c) => {
   const filePath = c.req.query('path');
   if (filePath === undefined || filePath === '') return c.text('Missing path', 400);
   const repoRoot = c.get('repoRoot');
@@ -221,7 +222,9 @@ pageRoutes.get('/file-raw', (c) => {
   try {
     content = readFileSync(abs, 'utf-8');
   } catch {
-    return c.text('File not found', 404);
+    const saved = await readWorkspaceSource(repoRoot, filePath).catch(() => null);
+    if (saved === null) return c.text('File not found', 404);
+    content = saved;
   }
 
   const lines = content.split('\n');
